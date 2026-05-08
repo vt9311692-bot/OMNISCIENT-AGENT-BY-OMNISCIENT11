@@ -489,19 +489,30 @@ st.markdown("<h1 class='main-title'>OMNISCIENT AGENT</h1>", unsafe_allow_html=Tr
 st.markdown("<p class='tagline'>The Invisible Mind of IPL Cricket 🧠🏏</p>", unsafe_allow_html=True)
 
 if st.session_state.game_state == "start":
+    # Auto-detect key from environment or secrets
+    env_key = os.getenv("GROQ_API_KEY", "")
+    
     with st.container():
         st.markdown("<div class='glass-card'></div>", unsafe_allow_html=True)
         st.markdown(f"### {random.choice(WELCOME_LINES)}")
         st.write("")
-        api_key_input = st.text_input("🔑 Groq API Key (Neural Access)", type="password", value=st.session_state.get("api_key", ""))
-        st.write("")
-        if st.button("🚀 Shuru Karo!", type="primary", use_container_width=True):
-            if api_key_input:
-                st.session_state.api_key = api_key_input
+        
+        if env_key:
+            st.success("✅ Neural Connection Established (API Key Active)")
+            if st.button("🚀 Start Guessing!", type="primary", use_container_width=True):
+                st.session_state.api_key = env_key
                 st.session_state.game_state = "playing"
                 get_next_question()
-            else:
-                st.error("Bhai pehle API key toh daal! 🔑")
+        else:
+            api_key_input = st.text_input("🔑 Groq API Key (Neural Access)", type="password", value=st.session_state.get("api_key", ""))
+            st.write("")
+            if st.button("🚀 Shuru Karo!", type="primary", use_container_width=True):
+                if api_key_input:
+                    st.session_state.api_key = api_key_input
+                    st.session_state.game_state = "playing"
+                    get_next_question()
+                else:
+                    st.error("Bhai pehle API key toh daal! 🔑")
 
 elif st.session_state.game_state == "playing":
     q = st.session_state.current_q
