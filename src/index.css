@@ -1,0 +1,172 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+:root {
+  --haka-ice: #A7D8F2;
+  --haka-powder: #CFE8F7;
+  --haka-aqua: #B8E3E9;
+  --haka-mist: #F8FBFD;
+  --haka-cloud: #DDE7EE;
+  --haka-navy: #355C7D;
+  --haka-lavender: #C8B6FF;
+}
+
+body {
+  font-family: 'Inter', 'Satoshi', 'General Sans', sans-serif;
+  color: var(--haka-navy);
+  background-color: var(--haka-mist);
+  overflow-x: hidden;
+}
+
+.haka-gradient-bg {
+  background: linear-gradient(135deg,
+      var(--haka-mist) 0%,
+      var(--haka-powder) 33%,
+      var(--haka-aqua) 66%,
+      var(--haka-lavender) 100%);
+  background-size: 400% 400%;
+  animation: gradient-flow 15s ease infinite;
+}
+
+@keyframes gradient-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow:
+    0 10px 40px rgba(0, 0, 0, 0.04),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+.ai-orb {
+  background: radial-gradient(circle at 30% 30%, #fff, var(--haka-ice));
+  box-shadow:
+    0 0 60px rgba(167, 216, 242, 0.4),
+    inset 0 0 30px rgba(255, 255, 255, 0.9);
+}
+
+.floating-blob {
+  position: absolute;
+  filter: blur(100px);
+  z-index: -1;
+  opacity: 0.5;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.animated-gradient-border {
+  position: relative;
+  background: rgba(255, 255, 255, 0.5);
+  background-clip: padding-box;
+  border: 1px solid transparent;
+}
+
+.animated-gradient-border::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: -1;
+  margin: -1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, var(--haka-ice), var(--haka-lavender), var(--haka-aqua), var(--haka-ice));
+  background-size: 300% 300%;
+  animation: gradient-flow 5s linear infinite;
+}
+
+.btn-luxury {
+  transition: all 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-luxury::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.6s ease-out, height 0.6s ease-out;
+}
+
+.btn-luxury:active::after {
+  width: 300%;
+  height: 300%;
+  opacity: 0;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(53, 92, 125, 0.1);
+  border-radius: 20px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(53, 92, 125, 0.2);
+  background-clip: padding-box;
+}
+
+.shimmer-effect {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer-effect::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(45deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.1) 45%,
+      rgba(255, 255, 255, 0.2) 50%,
+      rgba(255, 255, 255, 0.1) 55%,
+      transparent 100%);
+  transform: rotate(45deg);
+  animation: shimmer 3s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translate(-100%, -100%) rotate(45deg);
+  }
+
+  100% {
+    transform: translate(100%, 100%) rotate(45deg);
+  }
+}
