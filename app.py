@@ -7,6 +7,10 @@ from groq import Groq
 from dotenv import load_dotenv
 
 load_dotenv()
+def save_key_to_env(key):
+    with open(".env", "w") as f:
+        f.write(f"GROQ_API_KEY={key}\n")
+    os.environ["GROQ_API_KEY"] = key
 
 # --- APP CONFIG ---
 st.set_page_config(page_title="OMNISCIENT AGENT | IPL Akinator", page_icon="🧠", layout="centered")
@@ -154,11 +158,13 @@ def inject_apple_css():
         color: #ffffff !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
         border-radius: 14px !important;
-        padding: 0.6rem 1.2rem !important;
+        padding: 0.8rem 0.5rem !important;
         font-weight: 600 !important;
         font-family: 'Inter', sans-serif !important;
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
         backdrop-filter: blur(10px) !important;
+        width: 100% !important;
+        white-space: nowrap !important;
     }
 
     .stButton > button:hover {
@@ -295,6 +301,7 @@ def inject_apple_css():
 inject_apple_css()
 
 # --- DATA LOADING (merges ALL datasets) ---
+@st.cache_data
 def load_data():
     players = []
     seen_names = set()
@@ -370,7 +377,7 @@ def load_data():
     if not players:
         players = [{"Name": "MS Dhoni", "Team": "CSK"}, {"Name": "Virat Kohli", "Team": "RCB"}]
     
-    return players
+    return players[:170]
 
 # --- INITIALIZE SESSION STATE (always reload fresh data) ---
 if "game_state" not in st.session_state:
@@ -412,7 +419,7 @@ def call_groq(prompt):
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
-                {"role": "system", "content": "You are OMNISCIENT AGENT, an IPL cricket expert. ALL questions and comments must be in ENGLISH ONLY. No Hindi. Use fun team nicknames: CSK=Whistle Podu Gang, MI=Paltan, RCB=Royal Chokers, KKR=Shah Rukh XI, SRH=Orange Army, DC=Capital Punishers, RR=Royals, PBKS=Punjab Kings, GT=Titans, LSG=Nawabs. Output STRICTLY valid JSON."},
+                {"role": "system", "content": "You are OMNISCIENT AGENT, an IPL cricket expert. Always refer to the player as a singular individual (use 'Is he...', 'Does he...', 'Is the player...'). Never use plural 'they' or 'are' for the individual. ALL questions and comments must be in ENGLISH ONLY. No Hindi. Use fun team nicknames: CSK=Whistle Podu Gang, MI=Paltan, RCB=Royal Chokers, KKR=Shah Rukh XI, SRH=Orange Army, DC=Capital Punishers, RR=Royals, PBKS=Punjab Kings, GT=Titans, LSG=Nawabs. Output STRICTLY valid JSON."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.2,
@@ -420,7 +427,8 @@ def call_groq(prompt):
             response_format={"type": "json_object"}
         )
         return json.loads(response.choices[0].message.content)
-    except Exception:
+    except Exception as e:
+        st.error(f"⚠️ Groq API Error: {str(e)}")
         return None
 
 def get_next_question():
@@ -429,8 +437,8 @@ def get_next_question():
         return make_guess()
 
     # Limit the pool info sent to AI to save tokens and improve split accuracy
-    # If the list is too long, the AI might struggle. We send up to 100 players' details.
-    pool_sample = remaining[:100]
+    # Limit the pool info to 20 players for ultra-fast response times.
+    pool_sample = remaining[:20]
     pool = [{"name": p["Name"], "team": p.get("Team",""), "role": p.get("Role",""), "nat": p.get("Nationality","")} for p in pool_sample]
     
     # Build list of already-asked questions to prevent repeats
@@ -450,12 +458,13 @@ Questions left: {8 - st.session_state.count}
 
 STRICT RULES:
 1. Ask ONE NEW cricket Yes/No question DIFFERENT from all above.
-2. Use the player data (team, role, nationality) to classify ACCURATELY.
-3. ONLY ask about: nationality, role, team, batting hand, bowling style, captaincy, era, wicketkeeper.
-4. NEVER ask about names, letters, alphabets. BANNED.
-5. EVERY player MUST be in yes_players or no_players. No missing players.
-6. Split into TWO roughly EQUAL halves.
-7. Short witty English comment. No Hindi.
+2. REFER TO THE PLAYER AS AN INDIVIDUAL (use 'Is he...', 'Does he...'). Do NOT use 'they' or 'are'.
+3. Use the player data (team, role, nationality) to classify ACCURATELY.
+4. ONLY ask about: nationality, role, team, batting hand, bowling style, captaincy, era, wicketkeeper.
+5. NEVER ask about names, letters, alphabets. BANNED.
+6. EVERY player MUST be in yes_players or no_players. No missing players.
+7. Split into TWO roughly EQUAL halves.
+8. Short witty English comment. No Hindi.
 
 Return JSON: {{"question": "...", "ai_personality_comment": "...", "yes_players": [...], "no_players": [...]}}"""
     with st.spinner(random.choice(LOADING_LINES)):
@@ -485,6 +494,19 @@ Return JSON: {{"guess": "...", "confidence": "...", "reasoning": "...", "celebra
             st.error("Failed to finalize prediction. Neural feedback loop broken.")
 
 # --- UI RENDERING ---
+with st.sidebar:
+    st.markdown("### ⚙️ Settings")
+    if st.button("🔑 Change API Key"):
+        if os.path.exists(".env"):
+            os.remove(".env")
+        # Clear env var for current session
+        if "GROQ_API_KEY" in os.environ:
+            del os.environ["GROQ_API_KEY"]
+        st.session_state.game_state = "start"
+        st.rerun()
+    st.markdown("---")
+    st.caption("OMNISCIENT v2.3 | 8B Ultra-Fast")
+
 st.markdown("<h1 class='main-title'>OMNISCIENT AGENT</h1>", unsafe_allow_html=True)
 st.markdown("<p class='tagline'>The Invisible Mind of IPL Cricket 🧠🏏</p>", unsafe_allow_html=True)
 
@@ -509,6 +531,7 @@ if st.session_state.game_state == "start":
             if st.button("🚀 Shuru Karo!", type="primary", use_container_width=True):
                 if api_key_input:
                     st.session_state.api_key = api_key_input
+                    save_key_to_env(api_key_input)
                     st.session_state.game_state = "playing"
                     get_next_question()
                 else:
@@ -534,7 +557,7 @@ elif st.session_state.game_state == "playing":
             st.markdown(f"<div class='ai-bubble'>💬 {comment}</div>", unsafe_allow_html=True)
             st.subheader(q.get('question', 'Scanning neural patterns...'))
             
-            c1, c2, c3, c4 = st.columns(4)
+            c1, c2 = st.columns(2)
             
             def handle_ans(ans):
                 st.session_state.undo_stack.append({
@@ -556,13 +579,11 @@ elif st.session_state.game_state == "playing":
                 no_set = set(extract_name(n) for n in q.get("no_players", []))
                 
                 if ans == "Yes":
-                    # Keep yes players + any player AI forgot to classify
                     st.session_state.remaining_players = [
                         p for p in st.session_state.remaining_players 
                         if p["Name"].strip().lower() in yes_set or p["Name"].strip().lower() not in no_set
                     ]
                 elif ans == "No":
-                    # Keep no players + any player AI forgot to classify
                     st.session_state.remaining_players = [
                         p for p in st.session_state.remaining_players 
                         if p["Name"].strip().lower() in no_set or p["Name"].strip().lower() not in yes_set
@@ -576,13 +597,11 @@ elif st.session_state.game_state == "playing":
                 st.rerun()
 
             with c1: 
-                if st.button("✅ Haan", type="primary"): handle_ans("Yes")
+                if st.button("✅ Haan", type="primary", use_container_width=True): handle_ans("Yes")
+                if st.button("🤷 Shayad", use_container_width=True): handle_ans("Maybe")
             with c2: 
-                if st.button("❌ Nahi"): handle_ans("No")
-            with c3: 
-                if st.button("🤷 Shayad"): handle_ans("Maybe")
-            with c4:
-                if st.button("↩️ Undo", disabled=not st.session_state.undo_stack):
+                if st.button("❌ Nahi", use_container_width=True): handle_ans("No")
+                if st.button("↩️ Undo", use_container_width=True, disabled=not st.session_state.undo_stack):
                     last = st.session_state.undo_stack.pop()
                     st.session_state.remaining_players = last["remaining_players"]
                     st.session_state.history = last["history"]
