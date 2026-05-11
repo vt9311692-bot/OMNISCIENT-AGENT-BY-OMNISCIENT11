@@ -4,13 +4,24 @@ import json
 import os
 import random
 from groq import Groq
+import google.generativeai as genai
+from cerebras.cloud.sdk import Cerebras
 from dotenv import load_dotenv
 
 load_dotenv()
 def save_key_to_env(key):
+    # Clear all potential keys from current environment first
+    for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY"]:
+        if k in os.environ: del os.environ[k]
+        
+    # Detect key type
+    if key.startswith("AIza"): key_name = "GEMINI_API_KEY"
+    elif key.startswith("csk-"): key_name = "CEREBRAS_API_KEY"
+    else: key_name = "GROQ_API_KEY"
+    
     with open(".env", "w") as f:
-        f.write(f"GROQ_API_KEY={key}\n")
-    os.environ["GROQ_API_KEY"] = key
+        f.write(f"{key_name}={key}\n")
+    os.environ[key_name] = key
 
 # --- APP CONFIG ---
 st.set_page_config(page_title="OMNISCIENT AGENT | IPL Akinator", page_icon="🧠", layout="centered")
@@ -404,32 +415,74 @@ if "current_q" not in st.session_state:
 if "final_guess" not in st.session_state:
     st.session_state.final_guess = None
 
-# --- GROQ LOGIC ---
-def get_client():
-    api_key = os.getenv("GROQ_API_KEY", st.session_state.get("api_key", ""))
-    if not api_key: return None
-    try:
-        return Groq(api_key=api_key)
-    except: return None
-
-def call_groq(prompt):
-    client = get_client()
-    if not client: return None
-    try:
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": "You are OMNISCIENT AGENT, an IPL cricket expert. Always refer to the player as a singular individual (use 'Is he...', 'Does he...', 'Is the player...'). Never use plural 'they' or 'are' for the individual. ALL questions and comments must be in ENGLISH ONLY. No Hindi. Use fun team nicknames: CSK=Whistle Podu Gang, MI=Paltan, RCB=Royal Chokers, KKR=Shah Rukh XI, SRH=Orange Army, DC=Capital Punishers, RR=Royals, PBKS=Punjab Kings, GT=Titans, LSG=Nawabs. Output STRICTLY valid JSON."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.2,
-            max_tokens=2048,
-            response_format={"type": "json_object"}
-        )
-        return json.loads(response.choices[0].message.content)
-    except Exception as e:
-        st.error(f"⚠️ Groq API Error: {str(e)}")
+# --- AI LOGIC ---
+def call_ai(prompt):
+    # Determine which key to use (Session state takes priority over .env)
+    current_key = st.session_state.get("api_key", os.getenv("CEREBRAS_API_KEY", os.getenv("GEMINI_API_KEY", os.getenv("GROQ_API_KEY", ""))))
+    
+    if not current_key:
+        st.error("No API Key detected. Please enter a key on the start screen.")
         return None
+
+    # 1. Try Cerebras (with auto-retry for queue_exceeded)
+    if current_key.startswith("csk-"):
+        import time
+        for attempt in range(3):
+            try:
+                client = Cerebras(api_key=current_key)
+                response = client.chat.completions.create(
+                    model="llama3.1-8b",
+                    messages=[
+                        {"role": "system", "content": "You are OMNISCIENT AGENT, an IPL cricket expert. Always refer to the player as a singular individual. No Hindi. Output STRICTLY valid JSON."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    response_format={"type": "json_object"}
+                )
+                return json.loads(response.choices[0].message.content)
+            except Exception as e:
+                err_msg = str(e).lower()
+                if ("rate" in err_msg or "queue" in err_msg or "traffic" in err_msg) and attempt < 2:
+                    time.sleep(1.5 * (attempt + 1)) # Wait and retry
+                    continue
+                st.error(f"⚠️ Cerebras API Error: {str(e)}")
+                return None
+    
+    # 2. Try Gemini
+    if current_key.startswith("AIza"):
+        try:
+            genai.configure(api_key=current_key)
+            # Use 'gemini-1.5-flash-latest' to avoid 404 on some regions
+            model = genai.GenerativeModel("gemini-1.5-flash-latest")
+            response = model.generate_content(
+                prompt,
+                generation_config={"response_mime_type": "application/json"}
+            )
+            return json.loads(response.text)
+        except Exception as e:
+            st.error(f"⚠️ Gemini API Error: {str(e)}")
+            return None
+    
+    # 3. Try Groq
+    if current_key.startswith("gsk"):
+        try:
+            client = Groq(api_key=current_key)
+            response = client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[
+                    {"role": "system", "content": "You are OMNISCIENT AGENT, an IPL cricket expert. Always refer to the player as a singular individual. No Hindi. Output STRICTLY valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.2,
+                max_tokens=1024,
+                response_format={"type": "json_object"}
+            )
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            st.error(f"⚠️ Groq API Error: {str(e)}")
+            return None
+    
+    st.error("Unrecognized API Key format. Please use a Cerebras (csk-), Gemini (AIza), or Groq (gsk) key.")
+    return None
 
 def get_next_question():
     remaining = st.session_state.remaining_players
@@ -437,9 +490,9 @@ def get_next_question():
         return make_guess()
 
     # Limit the pool info sent to AI to save tokens and improve split accuracy
-    # Limit the pool info to 20 players for ultra-fast response times.
-    pool_sample = remaining[:20]
-    pool = [{"name": p["Name"], "team": p.get("Team",""), "role": p.get("Role",""), "nat": p.get("Nationality","")} for p in pool_sample]
+    # Limit to 30 players for better question variety while staying fast
+    pool_sample = remaining[:30]
+    pool = "; ".join([f"{p['Name']} ({p.get('Team','')}, {p.get('Role','')}, {p.get('Nationality','')})" for p in pool_sample])
     
     # Build list of already-asked questions to prevent repeats
     asked = [h["q"] for h in st.session_state.history]
@@ -450,30 +503,25 @@ def get_next_question():
     
     prompt = f"""Players with their data: {pool}
 
-ALREADY ASKED (DO NOT repeat):
-{asked_str}
+Questions already asked: {asked_str}
 
-Suggested NEW topics: {remaining_topics}
-Questions left: {8 - st.session_state.count}
-
+CRITICAL: Ask ONE brilliant Yes/No question to split the current pool. 
 STRICT RULES:
-1. Ask ONE NEW cricket Yes/No question DIFFERENT from all above.
-2. REFER TO THE PLAYER AS AN INDIVIDUAL (use 'Is he...', 'Does he...'). Do NOT use 'they' or 'are'.
-3. Use the player data (team, role, nationality) to classify ACCURATELY.
-4. ONLY ask about: nationality, role, team, batting hand, bowling style, captaincy, era, wicketkeeper.
-5. NEVER ask about names, letters, alphabets. BANNED.
-6. EVERY player MUST be in yes_players or no_players. No missing players.
-7. Split into TWO roughly EQUAL halves.
-8. Short witty English comment. No Hindi.
+1. Do NOT repeat any question similar to the ones already asked. 
+2. ALWAYS refer to the player as an individual (use 'Is he...', 'Does he...'). NEVER use 'they' or 'are'.
+3. Focus on a DIFFERENT attribute (Team, Role, Nationality, etc.).
+4. NEVER ask about names, letters, or alphabets.
+5. EVERY player in the provided list MUST be in either 'yes_players' or 'no_players'.
 
 Return JSON: {{"question": "...", "ai_personality_comment": "...", "yes_players": [...], "no_players": [...]}}"""
     with st.spinner(random.choice(LOADING_LINES)):
-        res = call_groq(prompt)
+        res = call_ai(prompt)
         if res:
             st.session_state.current_q = res
             st.rerun()
         else:
-            st.error("Neural sectors are unresponsive (AI error). Try clicking again or check your API key.")
+            st.session_state.game_state = "error"
+            st.session_state.last_error = "Neural Bridge disconnected. Possible traffic jam in AI sectors."
 
 def make_guess():
     remaining = st.session_state.remaining_players
@@ -485,7 +533,7 @@ Pick the BEST match. Add a fun English celebration line.
 Return JSON: {{"guess": "...", "confidence": "...", "reasoning": "...", "celebration": "..."}}"""
     
     with st.spinner("Locking in final answer... 🔒"):
-        res = call_groq(prompt)
+        res = call_ai(prompt)
         if res:
             st.session_state.final_guess = res
             st.session_state.game_state = "result"
@@ -499,20 +547,21 @@ with st.sidebar:
     if st.button("🔑 Change API Key"):
         if os.path.exists(".env"):
             os.remove(".env")
-        # Clear env var for current session
-        if "GROQ_API_KEY" in os.environ:
-            del os.environ["GROQ_API_KEY"]
+        # Deep clear all potential keys
+        for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY"]:
+            if k in os.environ: del os.environ[k]
+        if "api_key" in st.session_state:
+            del st.session_state["api_key"]
         st.session_state.game_state = "start"
         st.rerun()
     st.markdown("---")
-    st.caption("OMNISCIENT v2.3 | 8B Ultra-Fast")
+    st.caption("OMNISCIENT v2.7 | Cerebras Ultra-Fast")
 
 st.markdown("<h1 class='main-title'>OMNISCIENT AGENT</h1>", unsafe_allow_html=True)
 st.markdown("<p class='tagline'>The Invisible Mind of IPL Cricket 🧠🏏</p>", unsafe_allow_html=True)
 
 if st.session_state.game_state == "start":
-    # Auto-detect key from environment or secrets
-    env_key = os.getenv("GROQ_API_KEY", "")
+    env_key = os.getenv("CEREBRAS_API_KEY", os.getenv("GEMINI_API_KEY", os.getenv("GROQ_API_KEY", "")))
     
     with st.container():
         st.markdown("<div class='glass-card'></div>", unsafe_allow_html=True)
@@ -520,13 +569,16 @@ if st.session_state.game_state == "start":
         st.write("")
         
         if env_key:
-            st.success("✅ Neural Connection Established (API Key Active)")
+            if env_key.startswith("csk-"): provider = "Cerebras"
+            elif env_key.startswith("AIza"): provider = "Gemini"
+            else: provider = "Groq"
+            st.success(f"✅ Neural Connection Established ({provider} Active)")
             if st.button("🚀 Start Guessing!", type="primary", use_container_width=True):
                 st.session_state.api_key = env_key
                 st.session_state.game_state = "playing"
                 get_next_question()
         else:
-            api_key_input = st.text_input("🔑 Groq API Key (Neural Access)", type="password", value=st.session_state.get("api_key", ""))
+            api_key_input = st.text_input("🔑 API Key (Cerebras, Gemini, or Groq)", type="password", value=st.session_state.get("api_key", ""))
             st.write("")
             if st.button("🚀 Shuru Karo!", type="primary", use_container_width=True):
                 if api_key_input:
@@ -652,3 +704,15 @@ elif st.session_state.game_state == "result":
                     st.session_state.game_state = "playing"
                     st.session_state.current_q = None
                 st.rerun()
+elif st.session_state.game_state == "error":
+    with st.container():
+        st.markdown("<div class='glass-card'></div>", unsafe_allow_html=True)
+        st.error(f"🚨 AGENT ERROR: {st.session_state.get('last_error', 'Unknown breakdown')}")
+        st.write("Cerebras or Gemini might be under heavy load. Wait 10 seconds and try again.")
+        if st.button("🔄 Retry Connection", type="primary", use_container_width=True):
+            st.session_state.game_state = "playing"
+            st.session_state.current_q = None
+            st.rerun()
+        if st.button("🏠 Back to Start"):
+            st.session_state.game_state = "start"
+            st.rerun()
