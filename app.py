@@ -20,12 +20,13 @@ from dotenv import load_dotenv
 load_dotenv()
 def save_key_to_env(key):
     # Clear all potential keys from current environment first
-    for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY"]:
+    for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY"]:
         if k in os.environ: del os.environ[k]
         
     # Detect key type
     if key.startswith("AIza"): key_name = "GEMINI_API_KEY"
     elif key.startswith("csk-"): key_name = "CEREBRAS_API_KEY"
+    elif key.startswith("sk-or-"): key_name = "OPENROUTER_API_KEY"
     else: key_name = "GROQ_API_KEY"
     
     with open(".env", "w") as f:
@@ -514,16 +515,31 @@ def call_ai(prompt, model_name=None):
     if current_key.startswith("sk-or-"):
         try:
             import requests
-            headers = {"Authorization": f"Bearer {current_key}", "Content-Type": "application/json"}
+            headers = {
+                "Authorization": f"Bearer {current_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://github.com/omniscient-agent", # Optional, for OpenRouter rankings
+                "X-Title": "Omniscient Agent"
+            }
             payload = {
                 "model": model_name if model_name else "moonshotai/kimi-k2.6",
                 "messages": [{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
-                "temperature": 0.0, "max_tokens": 600, "response_format": {"type": "json_object"}
+                "temperature": 0.0, "max_tokens": 800, "response_format": {"type": "json_object"}
             }
-            res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
-            return json.loads(clean_json(res.json()['choices'][0]['message']['content']))
+            res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=30)
+            if res.status_code != 200:
+                st.session_state.last_error = f"OpenRouter API Error ({res.status_code}): {res.text}"
+                return None
+            
+            data = res.json()
+            if 'choices' not in data or not data['choices']:
+                st.session_state.last_error = f"OpenRouter Unexpected Response: {data}"
+                return None
+                
+            content = data['choices'][0]['message']['content']
+            return json.loads(clean_json(content))
         except Exception as e:
-            st.session_state.last_error = f"OpenRouter Error: {e}"
+            st.session_state.last_error = f"OpenRouter Exception: {e}"
             return None
 
     return None
@@ -698,7 +714,7 @@ if st.session_state.game_state == "start":
                     st.rerun()
         else:
             st.info("Bhai pehle apni API key daalo connection banane ke liye!")
-            api_key_input = st.text_input("🔑 API Key Daalo", type="password", placeholder="Groq, Gemini, ya Cerebras key yahan chipkao...")
+            api_key_input = st.text_input("🔑 API Key Daalo", type="password", placeholder="OpenRouter (sk-or-...), Groq, Gemini, ya Cerebras key...")
             
             col1, col2 = st.columns(2)
             with col1:
