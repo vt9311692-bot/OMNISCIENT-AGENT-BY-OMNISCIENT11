@@ -477,6 +477,7 @@ def call_ai(prompt, model_name=None):
             response = client.chat.completions.create(
                 model="llama3.1-8b",
                 messages=[{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
+                max_tokens=600,
                 response_format={"type": "json_object"}
             )
             return json.loads(clean_json(response.choices[0].message.content))
@@ -489,7 +490,7 @@ def call_ai(prompt, model_name=None):
         try:
             genai.configure(api_key=current_key)
             model = genai.GenerativeModel("gemini-1.5-flash-latest")
-            response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
+            response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json", "max_output_tokens": 600})
             return json.loads(clean_json(response.text))
         except Exception as e:
             st.session_state.last_error = f"Gemini Error: {e}"
@@ -502,7 +503,7 @@ def call_ai(prompt, model_name=None):
             response = client.chat.completions.create(
                 model=model_name if model_name else "llama-3.1-8b-instant",
                 messages=[{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
-                temperature=0.0, response_format={"type": "json_object"}
+                temperature=0.0, max_tokens=600, response_format={"type": "json_object"}
             )
             return json.loads(clean_json(response.choices[0].message.content))
         except Exception as e:
@@ -517,7 +518,7 @@ def call_ai(prompt, model_name=None):
             payload = {
                 "model": model_name if model_name else "moonshotai/kimi-k2.6",
                 "messages": [{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
-                "temperature": 0.0, "response_format": {"type": "json_object"}
+                "temperature": 0.0, "max_tokens": 600, "response_format": {"type": "json_object"}
             }
             res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
             return json.loads(clean_json(res.json()['choices'][0]['message']['content']))
@@ -532,10 +533,15 @@ def get_next_question():
     if len(remaining) <= 1 or st.session_state.count >= 8:
         return make_guess()
 
-    # Token-efficient indexing with Metadata for 100% AI accuracy
-    pool_data = "| ".join([f"{i}:{p['Name']}({p.get('Team','?')},{p.get('Role','?')})" for i, p in enumerate(remaining)])
+    # Compress data to avoid token limit errors
+    def compress(p):
+        t = p.get('Team','?')[:3].upper()
+        r = p.get('Role','?')[0].upper()
+        return f"{p['Name']}[{t},{r}]"
+        
+    pool_data = "|".join([f"{i}:{compress(p)}" for i, p in enumerate(remaining)])
     past_questions = [h['q'] for h in st.session_state.history]
-    history_str = ", ".join([f"{h['q']}={h['a']}" for h in st.session_state.history])
+    history_str = ",".join([f"{h['q']}={h['a']}" for h in st.session_state.history])
     
     prompt = f"""
 POOL: {pool_data}
