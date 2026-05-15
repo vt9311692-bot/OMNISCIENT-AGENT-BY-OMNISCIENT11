@@ -531,7 +531,7 @@ def call_ai(prompt, model_name=None):
                 response = client.chat.completions.create(
                     model=model_name if model_name else "llama-3.1-8b-instant",
                     messages=[
-                        {"role": "system", "content": "You are OMNISCIENT AGENT - CRICKET MIND READER 🧠🏏. MISSION: Identify player using career FACTS ONLY. BANNED: No future predictions or opinions. No specific names unless pool < 3. Output ONLY JSON."},
+                        {"role": "system", "content": "You are OMNISCIENT AGENT - CRICKET MIND READER 🧠🏏. MISSION: Identify player using career FACTS ONLY. BANNED: No predictions or opinions. HUMOR: Use savage Hinglish humor in the ai_personality_comment. Output ONLY JSON."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.0,
@@ -559,31 +559,27 @@ def get_next_question():
     if len(remaining) <= 1 or st.session_state.count >= 8:
         return make_guess()
 
-    # Token-efficient indexing
-    pool_data = ", ".join([f"{i}:{p['Name']}" for i, p in enumerate(remaining)])
-    history = ", ".join([f"{h['q']}={h['a']}" for h in st.session_state.history])
+    # Token-efficient indexing with Metadata for 100% AI accuracy
+    pool_data = "| ".join([f"{i}:{p['N']}({p.get('T','?')},{p.get('R','?')})" for i, p in enumerate(remaining)])
+    past_questions = [h['q'] for h in st.session_state.history]
+    history_str = ", ".join([f"{h['q']}={h['a']}" for h in st.session_state.history])
     
     prompt = f"""
 POOL: {pool_data}
-HISTORY: {history}
+HISTORY: {history_str}
+BANNED QUESTIONS: {past_questions}
 
 TASK: Generate ONE smart Yes/No fact question to split the POOL 50/50.
-
-✅ GOOD EXAMPLES (FACTUAL):
-- "Has he played for MI?"
-- "Is he an overseas player?"
-- "Is he a fast bowler?"
-- "Has he won an IPL Orange Cap?"
-
-❌ BAD EXAMPLES (BANNED):
-- "Will he score a century in the next match?" (NEVER ASK PREDICTIONS)
-- "Is he the most aggressive batter?" (NEVER ASK OPINIONS)
-- "Is he Virat Kohli?" (NEVER ASK NAMES unless pool < 3)
+STRICT RULES:
+1. NEVER ask a question from BANNED list.
+2. Use Team/Role from POOL to ensure 100% accuracy in yes_indices.
+3. Savage Hinglish humor in comments.
 
 JSON:
 {{
-  "question": "",
-  "ai_personality_comment": "Funny English Roast",
+  "thought": "Why is this not a repeat?",
+  "question": "English Question",
+  "ai_personality_comment": "Savage Hinglish Roast",
   "yes_indices": []
 }}"""
     with st.spinner(random.choice(LOADING_LINES)):
