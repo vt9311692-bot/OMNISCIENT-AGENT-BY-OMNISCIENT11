@@ -711,7 +711,7 @@ with st.sidebar:
 st.markdown("<h1 class='main-title'>OMNISCIENT AGENT</h1>", unsafe_allow_html=True)
 st.markdown("<p class='tagline'>🧠 CRICKET MIND READER MODE | The Invisible Mind of IPL 🏏</p>", unsafe_allow_html=True)
 
-    if st.session_state.game_state == "start":
+if st.session_state.game_state == "start":
     env_key = os.getenv("OPENROUTER_API_KEY", os.getenv("CEREBRAS_API_KEY", os.getenv("GEMINI_API_KEY", os.getenv("GROQ_API_KEY", ""))))
     
     with st.container():
@@ -736,7 +736,7 @@ st.markdown("<p class='tagline'>🧠 CRICKET MIND READER MODE | The Invisible Mi
             with c2:
                 if st.button("🔑 Switch Key", use_container_width=True):
                     if os.path.exists(".env"): os.remove(".env")
-                    for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY"]:
+                    for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY"]:
                         if k in os.environ: del os.environ[k]
                     if "api_key" in st.session_state: del st.session_state["api_key"]
                     st.session_state.game_state = "start"
