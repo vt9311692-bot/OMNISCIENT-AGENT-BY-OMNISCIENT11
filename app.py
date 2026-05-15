@@ -551,7 +551,37 @@ def call_ai(prompt, model_name=None):
                 st.error(f"⚠️ Groq API Error: {str(e)}")
                 return None
 
-    st.error("Unrecognized API Key format. Please use a Cerebras (csk-), Gemini (AIza), or Groq (gsk) key.")
+    # 4. Try OpenRouter (Kimi K2.6 Support)
+    if current_key.startswith("sk-or-"):
+        try:
+            import requests
+            headers = {
+                "Authorization": f"Bearer {current_key}",
+                "HTTP-Referer": "https://github.com/omniscient-agent", # Required by OpenRouter
+                "X-Title": "Omniscient Agent",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": model_name if model_name else "moonshotai/kimi-k2.6",
+                "messages": [
+                    {"role": "system", "content": "You are OMNISCIENT AGENT - CRICKET MIND READER 🧠🏏. MISSION: Identify player using career FACTS ONLY. BANNED: No predictions or opinions. HUMOR: Use savage Hinglish humor in the ai_personality_comment. Output ONLY JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.0,
+                "max_tokens": 1500,
+                "response_format": {"type": "json_object"}
+            }
+            response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+            response.raise_for_status()
+            content = response.json()['choices'][0]['message']['content'].strip()
+            if "```json" in content: content = content.split("```json")[1].split("```")[0]
+            elif "```" in content: content = content.split("```")[1].split("```")[0]
+            return json.loads(content.strip())
+        except Exception as e:
+            st.error(f"⚠️ OpenRouter Error: {str(e)}")
+            return None
+
+    st.error("Unrecognized API Key format. Use Cerebras (csk-), Gemini (AIza), Groq (gsk), or OpenRouter (sk-or-).")
     return None
 
 def get_next_question():
@@ -560,7 +590,7 @@ def get_next_question():
         return make_guess()
 
     # Token-efficient indexing with Metadata for 100% AI accuracy
-    pool_data = "| ".join([f"{i}:{p['N']}({p.get('T','?')},{p.get('R','?')})" for i, p in enumerate(remaining)])
+    pool_data = "| ".join([f"{i}:{p['Name']}({p.get('Team','?')},{p.get('Role','?')})" for i, p in enumerate(remaining)])
     past_questions = [h['q'] for h in st.session_state.history]
     history_str = ", ".join([f"{h['q']}={h['a']}" for h in st.session_state.history])
     
@@ -660,7 +690,7 @@ with st.sidebar:
         if os.path.exists(".env"):
             os.remove(".env")
         # Deep clear all potential keys
-        for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY"]:
+        for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY"]:
             if k in os.environ: del os.environ[k]
         if "api_key" in st.session_state:
             del st.session_state["api_key"]
@@ -668,13 +698,12 @@ with st.sidebar:
         st.rerun()
     st.markdown("### 💡 API Key Help")
     st.info("""
-    **If Groq is slow or rate-limited:**
-    1. Try a **Gemini Key** (More tokens/day)
-    2. Try a **Cerebras Key** (Faster)
+    **New Flagship Model Active:**
+    Use an **OpenRouter Key** to try the agentic **Kimi K2.6** model!
     """)
+    st.markdown("[Get OpenRouter Key](https://openrouter.ai/keys)")
     st.markdown("[Get Groq Key](https://console.groq.com/keys)")
     st.markdown("[Get Gemini Key](https://aistudio.google.com/app/apikey)")
-    st.markdown("[Get Cerebras Key](https://cloud.cerebras.ai/)")
     
     st.markdown("---")
     st.caption("OMNISCIENT v2.8 | Llama 3.1 8B Optimized")
@@ -682,8 +711,8 @@ with st.sidebar:
 st.markdown("<h1 class='main-title'>OMNISCIENT AGENT</h1>", unsafe_allow_html=True)
 st.markdown("<p class='tagline'>🧠 CRICKET MIND READER MODE | The Invisible Mind of IPL 🏏</p>", unsafe_allow_html=True)
 
-if st.session_state.game_state == "start":
-    env_key = os.getenv("CEREBRAS_API_KEY", os.getenv("GEMINI_API_KEY", os.getenv("GROQ_API_KEY", "")))
+    if st.session_state.game_state == "start":
+    env_key = os.getenv("OPENROUTER_API_KEY", os.getenv("CEREBRAS_API_KEY", os.getenv("GEMINI_API_KEY", os.getenv("GROQ_API_KEY", ""))))
     
     with st.container():
         st.markdown("<div class='glass-card'></div>", unsafe_allow_html=True)
@@ -691,7 +720,8 @@ if st.session_state.game_state == "start":
         st.write("")
         
         if env_key:
-            if env_key.startswith("csk-"): provider = "Cerebras"
+            if env_key.startswith("sk-or-"): provider = "OpenRouter (Kimi K2.6)"
+            elif env_key.startswith("csk-"): provider = "Cerebras"
             elif env_key.startswith("AIza"): provider = "Gemini"
             else: provider = "Groq"
             
