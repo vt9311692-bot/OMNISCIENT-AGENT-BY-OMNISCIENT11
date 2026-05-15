@@ -464,26 +464,36 @@ def call_ai(prompt, model_name=None):
     current_key = st.session_state.get("api_key", os.getenv("CEREBRAS_API_KEY", os.getenv("GEMINI_API_KEY", os.getenv("GROQ_API_KEY", ""))))
     if not current_key: return None
 
+    def clean_json(text):
+        text = text.strip()
+        if "```json" in text: text = text.split("```json")[1].split("```")[0]
+        elif "```" in text: text = text.split("```")[1].split("```")[0]
+        return text.strip()
+
     # 1. Cerebras
     if current_key.startswith("csk-"):
         try:
             client = Cerebras(api_key=current_key)
             response = client.chat.completions.create(
                 model="llama3.1-8b",
-                messages=[{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Career FACTS only. Output JSON."}, {"role": "user", "content": prompt}],
+                messages=[{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
             )
-            return json.loads(response.choices[0].message.content.strip())
-        except: return None
+            return json.loads(clean_json(response.choices[0].message.content))
+        except Exception as e:
+            st.session_state.last_error = f"Cerebras Error: {e}"
+            return None
 
     # 2. Gemini
     if current_key.startswith("AIza"):
         try:
             genai.configure(api_key=current_key)
-            model = genai.GenerativeModel("gemini-1.5-flash-latest", system_instruction="You are OMNISCIENT AGENT. MISSION: Career FACTS only. Output JSON.")
+            model = genai.GenerativeModel("gemini-1.5-flash-latest")
             response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
-            return json.loads(response.text.strip())
-        except: return None
+            return json.loads(clean_json(response.text))
+        except Exception as e:
+            st.session_state.last_error = f"Gemini Error: {e}"
+            return None
 
     # 3. Groq
     if current_key.startswith("gsk"):
@@ -491,11 +501,13 @@ def call_ai(prompt, model_name=None):
             client = Groq(api_key=current_key)
             response = client.chat.completions.create(
                 model=model_name if model_name else "llama-3.1-8b-instant",
-                messages=[{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Career FACTS only. Output JSON."}, {"role": "user", "content": prompt}],
+                messages=[{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
                 temperature=0.0, response_format={"type": "json_object"}
             )
-            return json.loads(response.choices[0].message.content.strip())
-        except: return None
+            return json.loads(clean_json(response.choices[0].message.content))
+        except Exception as e:
+            st.session_state.last_error = f"Groq Error: {e}"
+            return None
 
     # 4. OpenRouter
     if current_key.startswith("sk-or-"):
@@ -504,12 +516,14 @@ def call_ai(prompt, model_name=None):
             headers = {"Authorization": f"Bearer {current_key}", "Content-Type": "application/json"}
             payload = {
                 "model": model_name if model_name else "moonshotai/kimi-k2.6",
-                "messages": [{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Career FACTS only. Output JSON."}, {"role": "user", "content": prompt}],
+                "messages": [{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
                 "temperature": 0.0, "response_format": {"type": "json_object"}
             }
-            response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
-            return json.loads(response.json()['choices'][0]['message']['content'].strip())
-        except: return None
+            res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+            return json.loads(clean_json(res.json()['choices'][0]['message']['content']))
+        except Exception as e:
+            st.session_state.last_error = f"OpenRouter Error: {e}"
+            return None
 
     return None
 
@@ -549,6 +563,7 @@ JSON:
                 banned = ["will ", "next match", "score a", "hit a", "century in", "tomorrow", "tonight"]
                 # Reject if prediction or name-dropping in large pool
                 if any(b in q_text for b in banned) or (len(remaining) > 5 and any(p['Name'].lower() in q_text for p in remaining[:3])):
+                    time.sleep(1)
                     continue
                 st.session_state.current_q = res
                 st.rerun()
