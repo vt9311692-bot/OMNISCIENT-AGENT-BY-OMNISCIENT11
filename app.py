@@ -37,31 +37,32 @@ st.set_page_config(page_title="OMNISCIENT AGENT | IPL Akinator", page_icon="🧠
 
 # --- HINGLISH HUMOR LINES ---
 LOADING_LINES = [
-    "Dimaag ke neurons jala raha hoon... 🔥",
-    "Abhi warm-up kar raha hoon, calculation ka chakkar! 🧠",
-    "Cricket ka Wikipedia kholke padh raha hoon... 📚",
-    "Pacer ki speed check karunga! ⚡",
-    "Neural network mein IPL highlights dekh raha hoon... 📺",
-    "Spinner ka wizard dhoond raha hoon! 🪄",
-    "Stat padder hai kya? Ruk check karne de... 🧐",
-    "Death overs mein ye toh Shaun Pollock level! 🏏",
-    "IPL ki history khangal raha hoon, wait kar! 🏏",
-    "Bhai sahab, thoda sabar karo... data crunch ho raha hai! 🧠",
-    "Boundary pe catch pakad raha hoon, thoda wait! 🏃‍♂️",
+    "Burning through neural patterns... 🔥",
+    "Just warming up, calculating the odds! 🧠",
+    "Searching the Cricket Encyclopedia... 📚",
+    "Checking the pacer's speed! ⚡",
+    "Watching IPL highlights in the neural network... 📺",
+    "Looking for a spin wizard! 🪄",
+    "Checking for stat-padders... 🧐",
+    "Shaun Pollock level precision in the death overs! 🏏",
+    "Digging through IPL history, hang on! 🏏",
+    "Patience, data crunching in progress! 🧠",
+    "Taking a catch at the boundary, wait! 🏃‍♂️",
 ]
 WELCOME_LINES = [
-    "Ek IPL cricketer socho, main uska career nikaal dunga! 🏏",
-    "Mind reader mode activate! Koi special player socho! 🧠",
-    "Bhai koi bhi player socho, mera dimaag Google se tez hai! ⚡",
-    "Socho koi bhi cricketer... main OMNISCIENT hoon, bhulna mat 😎",
-    "Arey bhai, koi tough player socho! Yeh toh dark horse player lag raha hai. 🏇",
-    "Cricket ka encyclopedia hoon main, try me! 📖",
+    "Think of an IPL cricketer, I'll find them! 🏏",
+    "Mind reader mode active! Think of a special player! 🧠",
+    "Think of any player, my mind is faster than Google! ⚡",
+    "I am OMNISCIENT, don't forget it! 😎",
+    "Pick a tough player! A dark horse perhaps? 🏇",
+    "I am the cricket encyclopedia, try me! 📖",
 ]
 WRONG_GUESS_LINES = [
-    "Yaar galat? Beta tumne toh out kar diya! 💪",
-    "Arey yaar, chalo aur try karte hain... abhi toh main warm-up kar raha hoon 🔥",
-    "Galat guess? Impossible... shayad tumne galat info di! 😤",
-    "Bhai, tumne toh googly daal di! Chalo phir se field set karte hain. 🔄",
+    "Wait, that's wrong? You actually got me out! 💪",
+    "Let's try again... I was just warming up anyway! 🔥",
+    "Wrong guess? Impossible... you must have given me the wrong info! 😤",
+    "You just bowled a perfect googly! Let's reset the field. 🔄",
+    "A swing and a miss! Let's go for another round. 🏏",
 ]
 
 # --- APPLE MUSIC DARK GLASSMORPHISM CSS ---
@@ -425,10 +426,8 @@ def load_data():
     except Exception:
         pass
     
-    if not players:
-        players = [{"Name": "MS Dhoni", "Team": "CSK"}, {"Name": "Virat Kohli", "Team": "RCB"}]
-    
-    return players[:250]
+    # Final enforcement of 170 players as requested
+    return players[:170]
 
 # --- INITIALIZE SESSION STATE (always reload fresh data) ---
 # Centralized session state reset
@@ -446,6 +445,11 @@ def reset_game_state():
 # Initialize players list if not present
 if "all_players" not in st.session_state:
     st.session_state.all_players = load_data()
+    st.session_state.remaining_players = list(st.session_state.all_players)
+# Force reload if pool size exceeds 170 (enforcing user constraint)
+elif len(st.session_state.all_players) > 170:
+    st.session_state.all_players = st.session_state.all_players[:170]
+    st.session_state.remaining_players = [p for p in st.session_state.remaining_players if p in st.session_state.all_players]
 
 if st.session_state.game_state == "start":
     reset_game_state()
@@ -464,10 +468,10 @@ def call_ai(prompt, model_name=None):
         st.error("No API Key detected. Please enter a key on the start screen.")
         return None
 
-    # 1. Try Cerebras (with auto-retry for queue_exceeded)
+    # 1. Try Cerebras (Optimized for speed)
     if current_key.startswith("csk-"):
         if not HAS_CEREBRAS:
-            st.error("⚠️ Cerebras module not installed on this server. Please update requirements.txt on GitHub.")
+            st.error("⚠️ Cerebras module not installed. Please run: pip install cerebras-cloud-sdk")
             return None
         import time
         for attempt in range(3):
@@ -476,19 +480,20 @@ def call_ai(prompt, model_name=None):
                 response = client.chat.completions.create(
                     model="llama3.1-8b",
                     messages=[
-                        {"role": "system", "content": "You are OMNISCIENT AGENT CRICKET MIND READER MODE 🧠🏏. You are a savage IPL expert using Hinglish humor. Always refer to the player as a singular individual. Output STRICTLY valid JSON."},
+                        {"role": "system", "content": "You are a JSON-only API. Output STRICTLY valid JSON. No preamble."},
                         {"role": "user", "content": prompt}
                     ],
+                    max_tokens=1500,
                     response_format={"type": "json_object"}
                 )
-                content = response.choices[0].message.content
+                content = response.choices[0].message.content.strip()
                 if "```json" in content: content = content.split("```json")[1].split("```")[0]
                 elif "```" in content: content = content.split("```")[1].split("```")[0]
                 return json.loads(content.strip())
             except Exception as e:
                 err_msg = str(e).lower()
                 if ("rate" in err_msg or "queue" in err_msg or "traffic" in err_msg) and attempt < 2:
-                    time.sleep(1.5 * (attempt + 1)) # Wait and retry
+                    time.sleep(2)
                     continue
                 st.error(f"⚠️ Cerebras API Error: {str(e)}")
                 return None
@@ -501,7 +506,10 @@ def call_ai(prompt, model_name=None):
         try:
             genai.configure(api_key=current_key)
             # Use 'gemini-1.5-flash-latest' to avoid 404 on some regions
-            model = genai.GenerativeModel("gemini-1.5-flash-latest")
+            model = genai.GenerativeModel(
+                model_name="gemini-1.5-flash-latest",
+                system_instruction="You are OMNISCIENT AGENT CRICKET MIND READER MODE 🧠🏏. You are a savage IPL expert using English humor only. No Hindi or Hinglish allowed. Output ONLY strictly valid JSON."
+            )
             response = model.generate_content(
                 prompt,
                 generation_config={"response_mime_type": "application/json"}
@@ -521,32 +529,28 @@ def call_ai(prompt, model_name=None):
             try:
                 client = Groq(api_key=current_key)
                 response = client.chat.completions.create(
-                    model=model_name if model_name else "llama-3.3-70b-versatile",
+                    model=model_name if model_name else "llama-3.1-8b-instant",
                     messages=[
-                        {"role": "system", "content": "You are OMNISCIENT AGENT CRICKET MIND READER MODE 🧠🏏. You are a savage IPL expert using Hinglish humor. Always refer to the player as a singular individual. Output ONLY strictly valid JSON. Do not include any preamble or postscript."},
+                        {"role": "system", "content": "You are a JSON-only API. Output STRICTLY valid JSON. No preamble."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.1,
-                    max_tokens=2048,
+                    max_tokens=1500,
                     response_format={"type": "json_object"}
                 )
-                content = response.choices[0].message.content
-                # Robust JSON extraction
-                if "```json" in content:
-                    content = content.split("```json")[1].split("```")[0]
-                elif "```" in content:
-                    content = content.split("```")[1].split("```")[0]
+                content = response.choices[0].message.content.strip()
+                # Fallback for unexpected markdown
+                if "```json" in content: content = content.split("```json")[1].split("```")[0]
+                elif "```" in content: content = content.split("```")[1].split("```")[0]
                 return json.loads(content.strip())
             except Exception as e:
                 err_msg = str(e).lower()
-                # Groq 429 often contains "rate limit" or "wait"
-                if ("rate_limit" in err_msg or "rate limit" in err_msg or "429" in err_msg) and attempt < 2:
-                    wait_time = 7.0 if "6.72s" in err_msg or "try again" in err_msg else (attempt + 1) * 3
-                    time.sleep(wait_time)
+                if ("rate" in err_msg or "429" in err_msg) and attempt < 2:
+                    time.sleep(5)
                     continue
                 st.error(f"⚠️ Groq API Error: {str(e)}")
                 return None
-    
+
     st.error("Unrecognized API Key format. Please use a Cerebras (csk-), Gemini (AIza), or Groq (gsk) key.")
     return None
 
@@ -555,63 +559,23 @@ def get_next_question():
     if len(remaining) <= 1 or st.session_state.count >= 8:
         return make_guess()
 
-    # Provide ALL names in the pool to ensure 100% coverage in categorization
-    all_names = [p['Name'] for p in remaining]
-    pool_data = ", ".join(all_names)
-    
-    # Provide detailed metadata for a sample to help the AI understand the context
-    pool_sample = remaining[:60]
-    sample_metadata = "; ".join([f"{p['Name']} ({p.get('Team','?')}, {p.get('Role','?')}, {p.get('Nationality','?')})" for p in pool_sample])
-    
-    asked = [h["q"] for h in st.session_state.history]
-    asked_str = ", ".join(asked) if asked else "None"
+    # Token-efficient indexing
+    pool_data = ", ".join([f"{i}:{p['Name']}" for i, p in enumerate(remaining)])
+    history = ", ".join([f"{h['q']}={h['a']}" for h in st.session_state.history])
     
     prompt = f"""
-OMNISCIENT AGENT CRICKET MIND READER MODE 🧠🏏
+POOL: {pool_data}
+HISTORY: {history}
 
-PLAYER POOL TO CATEGORIZE: {pool_data}
+TASK: One Yes/No question in English to split the pool.
+OUTPUT: JSON with "question", "ai_personality_comment" (savage roast), and "yes_indices" (list of numbers from POOL).
 
-CONTEXT SAMPLE (Stats/Teams): {sample_metadata}
-
-Asked Questions: {asked_str}
-
-🎯 MISSION: Generate ONE laser-focused Yes/No question in HINGLISH that splits the PLAYER POOL 50/50.
-
-📋 CARDINAL RULES (NON-NEGOTIABLE):
-1. LANGUAGE: Pure HINGLISH only!
-2. PRECISION: EVERY SINGLE PLAYER listed in the "PLAYER POOL TO CATEGORIZE" above MUST be placed in either "yes_players" OR "no_players" (100% coverage mandatory).
-3. IMPACT: Question must eliminate minimum 40% of pool, maximum 60% (50/50 ideal).
-4. RELEVANCE: Only IPL/Cricket facts - Team, Role, Batting/Bowling Style, Awards, Strike Rate, Age Range.
-5. NO OVERLAP: Never repeat asked questions.
-
-🔍 MIND READER STRATEGY:
-- Use the "CONTEXT SAMPLE" to identify dividing traits (Overseas vs Domestic, Spinner vs Pacer, etc.).
-- Categorize every player from the pool based on your expert cricket knowledge.
-
-💬 AI PERSONALITY (SAVAGE MODE):
-Your comment must be funny, roasting, using cricket slang:
-- "Yeh toh boundary line par dance karega!" (boundary hitter)
-- "Death overs mein ye toh Shaun Pollock level!" (death bowler)
-- "Abhi warm-up kar raha hoon, calculation ka chakkar!"
-- "Mind reader mode activate! Ye player special hai!" (unique trait)
-- "Bhai, ye toh All-rounder hai ya specialist?"
-- "Chakka maara ja raha hoga is se!" (big hitter)
-- "Spinner ka wizard!" (spin bowler)
-- "Pacer ki speed check karunga!" (fast bowler)
-- "Opening batsman ka DNA!" (aggressive opener)
-- "All-rounder magic!" (bats and bowls)
-- "Ye toh dark horse player hai!" (underrated)
-- "Cricket ka encyclopedia is player!" (veteran)
-
-JSON FORMAT (STRICT):
+JSON:
 {{
-  "question": "Hinglish Yes/No Question",
-  "ai_personality_comment": "Funny Roasting Remark with Cricket Slang",
-  "yes_players": ["Full Name 1", "Full Name 2", ...],
-  "no_players": ["Full Name 3", "Full Name 4", ...]
-}}
-
-⚡ SMART HACK: Categorize names exactly as they appear in the pool list!"""
+  "question": "",
+  "ai_personality_comment": "",
+  "yes_indices": []
+}}"""
     with st.spinner(random.choice(LOADING_LINES)):
         res = call_ai(prompt)
         if res:
@@ -628,28 +592,41 @@ def make_guess():
     # Format history for the AI to understand it as a conversation
     history_lines = "\n".join([f"Q: {h['q']} | A: {h['a']}" for h in st.session_state.history])
     
-    # Identify winner using metadata
-    candidates_data = "; ".join([f"{p['Name']} ({p.get('Team')}, {p.get('Role')}, {p.get('FunnyName')})" for p in remaining])
+    # Identify winner using metadata (Cap at 20 to avoid token limit explosions)
+    candidates_data = "; ".join([f"{p['Name']} ({p.get('Team')}, {p.get('Role')}, {p.get('FunnyName')})" for p in remaining[:20]])
     
     prompt = f"""
-OMNISCIENT AGENT CRICKET MIND READER MODE 🧠🏏
+OMNISCIENT AGENT - ANTI-GRAVITY FINAL VERDICT MODE 🎯
 
-Game History: {history_lines}
-Candidates: {candidates_data}
+Game History:
+{history_lines}
 
-🎯 MISSION: Identify the winner with 100% precision.
+Remaining Candidates:
+{candidates_data}
 
-📋 FINAL GUESS RULES:
-1. REASONING: Provide a sharp, detective-style paragraph in HINGLISH. Explain exactly which 2-3 specific answers from the history locked in this player.
-2. PERSONALITY: Use 'SAVAGE MODE' humor. Roas the user slightly for how easy or hard they made it.
-3. CELEBRATION: A confident, witty Hinglish roasting line that proves you are OMNISCIENT.
+🔍 CRITICAL TASK:
+1. Analyze EVERY yes/no answer in history
+2. Identify which 2-3 SPECIFIC answers were GAME-CHANGERS (narrowed pool most)
+3. Use "anti-gravity detection" - highlight unique characteristics that stood out
+4. Name the ONE player who matches ALL conditions
 
-JSON FORMAT:
+📝 REASONING RULES:
+- Write reasoning as ONE flowing paragraph (NO lists/JSON formatting inside reasoning)
+- Mention 2-3 KEY answers that led to the player
+- Use Hinglish language naturally
+- Example: "Bhai, dekho logic. Aapne kaha opening batsman hai, right-hander, aur overseas... Virat Kohli toh RCB mein khelta hai, left-hander bhi nahi. Toh obviously ye Faf du Plessis hona chahiye!"
+- Highlight ANTI-GRAVITY traits: overseas vs domestic, big hitter vs accumulator, etc.
+
+🎉 CELEBRATION:
+- Short, witty, confident one-liner
+- Use cricket slang: "Chakka maara!", "Six aya!", "Boundary nikala!", "Wicket gira!", "Googly daal di!", "Neural network ne catch pakad liya!" etc.
+
+JSON OUTPUT (MANDATORY):
 {{
-  "guess": "Player Name",
-  "confidence": "95-100%",
-  "reasoning": "Bhai, simple logic hai! Aapne bola wo overseas hai, SRH ke liye khelta hai, aur left-handed opener hai... toh Travis Head ke alawa aur kaun ho sakta hai? Itna easy mat pucho!",
-  "celebration": "Neural Network ne stadium ke bahar chakka maar diya! 😎🏆"
+  "guess": "EXACT Player Name",
+  "confidence": "92%",
+  "reasoning": "Full paragraph explaining 2-3 key answers that confirm this player",
+  "celebration": "One-liner witty remark about the victory"
 }}"""
     
     with st.spinner("Locking in final answer... 🔒"):
@@ -677,8 +654,18 @@ with st.sidebar:
             del st.session_state["api_key"]
         st.session_state.game_state = "start"
         st.rerun()
+    st.markdown("### 💡 API Key Help")
+    st.info("""
+    **If Groq is slow or rate-limited:**
+    1. Try a **Gemini Key** (More tokens/day)
+    2. Try a **Cerebras Key** (Faster)
+    """)
+    st.markdown("[Get Groq Key](https://console.groq.com/keys)")
+    st.markdown("[Get Gemini Key](https://aistudio.google.com/app/apikey)")
+    st.markdown("[Get Cerebras Key](https://cloud.cerebras.ai/)")
+    
     st.markdown("---")
-    st.caption("OMNISCIENT v2.7 | Cerebras Ultra-Fast")
+    st.caption("OMNISCIENT v2.8 | Llama 3.1 8B Optimized")
 
 st.markdown("<h1 class='main-title'>OMNISCIENT AGENT</h1>", unsafe_allow_html=True)
 st.markdown("<p class='tagline'>🧠 CRICKET MIND READER MODE | The Invisible Mind of IPL 🏏</p>", unsafe_allow_html=True)
@@ -695,22 +682,37 @@ if st.session_state.game_state == "start":
             if env_key.startswith("csk-"): provider = "Cerebras"
             elif env_key.startswith("AIza"): provider = "Gemini"
             else: provider = "Groq"
-            st.success(f"✅ Neural Connection Established ({provider} Active)")
-            if st.button("🚀 Start Guessing!", type="primary", use_container_width=True):
-                st.session_state.api_key = env_key
-                st.session_state.game_state = "playing"
-                get_next_question()
-        else:
-            api_key_input = st.text_input("🔑 API Key (Cerebras, Gemini, or Groq)", type="password", value=st.session_state.get("api_key", ""))
-            st.write("")
-            if st.button("🚀 Shuru Karo!", type="primary", use_container_width=True):
-                if api_key_input:
-                    st.session_state.api_key = api_key_input
-                    save_key_to_env(api_key_input)
+            
+            st.success(f"✅ Active Provider: **{provider}**")
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("🚀 Start Guessing!", type="primary", use_container_width=True):
+                    st.session_state.api_key = env_key
                     st.session_state.game_state = "playing"
                     get_next_question()
-                else:
-                    st.error("Bhai pehle API key toh daal! 🔑")
+            with c2:
+                if st.button("🔑 Switch Key", use_container_width=True):
+                    if os.path.exists(".env"): os.remove(".env")
+                    for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY"]:
+                        if k in os.environ: del os.environ[k]
+                    if "api_key" in st.session_state: del st.session_state["api_key"]
+                    st.session_state.game_state = "start"
+                    st.rerun()
+        else:
+            st.info("Paste your API key below to connect to the Neural Network.")
+            api_key_input = st.text_input("🔑 API Key", type="password", placeholder="Paste Groq, Gemini, or Cerebras key here...")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🚀 Shuru Karo!", type="primary", use_container_width=True):
+                    if api_key_input:
+                        st.session_state.api_key = api_key_input
+                        save_key_to_env(api_key_input)
+                        st.session_state.game_state = "playing"
+                        get_next_question()
+                    else:
+                        st.error("Bhai pehle API key toh daal! 🔑")
 
 elif st.session_state.game_state == "playing":
     q = st.session_state.current_q
@@ -730,7 +732,7 @@ elif st.session_state.game_state == "playing":
             
             st.progress(st.session_state.count / 8.0)
             
-            comment = q.get('ai_personality_comment', 'Hmm... soch raha hoon...')
+            comment = q.get('ai_personality_comment', 'Hmm... thinking...')
             st.markdown(f"<div class='ai-bubble'>💬 {comment}</div>", unsafe_allow_html=True)
             st.subheader(q.get('question', 'Scanning neural patterns...'))
             
@@ -747,27 +749,18 @@ elif st.session_state.game_state == "playing":
                 
                 prev_pool = list(st.session_state.remaining_players)
                 
-                def extract_name(n):
-                    name_str = ""
-                    if isinstance(n, dict):
-                        name_str = str(n.get("name", n.get("Name", "")))
-                    else:
-                        name_str = str(n)
-                    # Normalize: lowercase and remove dots/special chars for better matching
-                    return name_str.strip().lower().replace(".", "").replace(" ", "")
-                
-                yes_set = set(extract_name(n) for n in q.get("yes_players", []))
-                no_set = set(extract_name(n) for n in q.get("no_players", []))
+                # Filter pool based on indices
+                yes_indices = set(q.get("yes_indices", []))
                 
                 if ans == "Yes":
                     st.session_state.remaining_players = [
-                        p for p in st.session_state.remaining_players 
-                        if extract_name(p["Name"]) in yes_set
+                        p for i, p in enumerate(st.session_state.remaining_players)
+                        if i in yes_indices
                     ]
                 elif ans == "No":
                     st.session_state.remaining_players = [
-                        p for p in st.session_state.remaining_players 
-                        if extract_name(p["Name"]) in no_set
+                        p for i, p in enumerate(st.session_state.remaining_players)
+                        if i not in yes_indices
                     ]
                 # If "Maybe", we don't filter the pool at all, just proceed to next question.
                 
@@ -779,10 +772,10 @@ elif st.session_state.game_state == "playing":
                 st.rerun()
 
             with c1: 
-                if st.button("✅ Haan", type="primary", use_container_width=True): handle_ans("Yes")
-                if st.button("🤷 Shayad", use_container_width=True): handle_ans("Maybe")
+                if st.button("✅ Yes", type="primary", use_container_width=True): handle_ans("Yes")
+                if st.button("🤷 Maybe", use_container_width=True): handle_ans("Maybe")
             with c2: 
-                if st.button("❌ Nahi", use_container_width=True): handle_ans("No")
+                if st.button("❌ No", use_container_width=True): handle_ans("No")
                 if st.button("↩️ Undo", use_container_width=True, disabled=not st.session_state.undo_stack):
                     last = st.session_state.undo_stack.pop()
                     st.session_state.remaining_players = last["remaining_players"]
@@ -790,6 +783,15 @@ elif st.session_state.game_state == "playing":
                     st.session_state.count = last["count"]
                     st.session_state.current_q = last["current_q"]
                     st.rerun()
+            
+            st.markdown("---")
+            if st.button("🔑 Change API Key", use_container_width=True):
+                if os.path.exists(".env"): os.remove(".env")
+                for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY"]:
+                    if k in os.environ: del os.environ[k]
+                if "api_key" in st.session_state: del st.session_state["api_key"]
+                st.session_state.game_state = "start"
+                st.rerun()
 
 elif st.session_state.game_state == "result":
     res = st.session_state.final_guess
@@ -811,7 +813,7 @@ elif st.session_state.game_state == "result":
             st.markdown(f"<span class='result-badge'>🧠 {st.session_state.count} probes</span>", unsafe_allow_html=True)
         
         st.write("")
-        reasoning_text = res.get('reasoning', 'Bhai, bas intuition hai! Data toh wahi bol raha hai.')
+        reasoning_text = res.get('reasoning', 'Pure calculation and data analysis.')
         st.markdown(f"""
         <div class='insight-box'>
             <span class='insight-label'>🧠 NEURAL INSIGHT</span>
@@ -840,6 +842,15 @@ elif st.session_state.game_state == "result":
                     st.session_state.game_state = "playing"
                     st.session_state.current_q = None
                 st.rerun()
+        
+        st.markdown("---")
+        if st.button("🔑 Change API Key", use_container_width=True):
+            if os.path.exists(".env"): os.remove(".env")
+            for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY"]:
+                if k in os.environ: del os.environ[k]
+            if "api_key" in st.session_state: del st.session_state["api_key"]
+            st.session_state.game_state = "start"
+            st.rerun()
 elif st.session_state.game_state == "error":
     with st.container():
         st.markdown("<div class='glass-card'></div>", unsafe_allow_html=True)
@@ -850,5 +861,14 @@ elif st.session_state.game_state == "error":
             st.session_state.current_q = None
             st.rerun()
         if st.button("🏠 Back to Start"):
+            st.session_state.game_state = "start"
+            st.rerun()
+        
+        st.markdown("---")
+        if st.button("🔑 Change API Key", use_container_width=True):
+            if os.path.exists(".env"): os.remove(".env")
+            for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY"]:
+                if k in os.environ: del os.environ[k]
+            if "api_key" in st.session_state: del st.session_state["api_key"]
             st.session_state.game_state = "start"
             st.rerun()
