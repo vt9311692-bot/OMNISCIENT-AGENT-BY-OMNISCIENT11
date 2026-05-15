@@ -522,7 +522,7 @@ def call_ai(prompt, model_name=None):
                 "X-Title": "Omniscient Agent"
             }
             payload = {
-                "model": model_name if model_name else "moonshotai/kimi-k2.6",
+                "model": model_name if model_name else "meta-llama/llama-3.1-70b-instruct",
                 "messages": [{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
                 "temperature": 0.0, "max_tokens": 800, "response_format": {"type": "json_object"}
             }
@@ -552,46 +552,79 @@ def get_next_question():
     # Compress data to avoid token limit errors
     def compress(p):
         t = p.get('Team','?')[:3].upper()
-        r = p.get('Role','?')[0].upper()
-        return f"{p['Name']}[{t},{r}]"
+        r = p.get('Role','?')
+        n = p.get('Nationality','?')
+        return f"{p['Name']}[{t},{r},{n}]"
         
     pool_data = "|".join([f"{i}:{compress(p)}" for i, p in enumerate(remaining)])
     past_questions = [h['q'] for h in st.session_state.history]
     history_str = ",".join([f"{h['q']}={h['a']}" for h in st.session_state.history])
     
+    # Fix 1: Decision Tree Strategy (Funnel Logic)
+    q_count = st.session_state.count + 1
+    if q_count == 1: focus = "NATIONALITY (Indian vs Overseas)"
+    elif q_count == 2: focus = "ROLE (Batsman, Bowler, Wicketkeeper, or All-rounder)"
+    elif q_count == 3: focus = "BATTING HAND (Right-handed vs Left-handed)"
+    elif q_count == 4: focus = "IPL TEAM (Current or primary team)"
+    elif q_count == 5: focus = "MAJOR ACHIEVEMENT (Orange/Purple cap, World Cup winner, etc.)"
+    else: focus = "ERA / UNIQUE STATS / SPECIFIC CAREER MILESTONES"
+
     prompt = f"""
 POOL: {pool_data}
 HISTORY: {history_str}
 BANNED QUESTIONS: {past_questions}
+CURRENT TURN: {q_count}
+MANDATORY FOCUS: {focus}
 
-TASK: Generate ONE smart Yes/No fact question to split the POOL 50/50.
+TASK: Generate ONE high-quality Yes/No factual question about the MANDATORY FOCUS to split the POOL as close to 50/50 as possible.
+
 STRICT RULES:
-1. NEVER ask a question from BANNED list.
-2. Use Team/Role from POOL to ensure 100% accuracy in yes_indices.
-3. Savage Hinglish humor in comments.
+1. CRITICAL: Your question MUST focus on: {focus}.
+2. Use the POOL metadata (Team, Role, Nationality) to ensure `yes_indices` are 100% accurate.
+3. NEVER ask a question from the BANNED list.
+4. Character: Savage Hinglish humor in `ai_personality_comment`.
 
-JSON:
+JSON OUTPUT:
 {{
-  "thought": "Why is this not a repeat?",
-  "question": "English Question",
-  "ai_personality_comment": "Savage Hinglish Roast",
-  "yes_indices": []
+  "thought": "Logic for this split and why it's accurate",
+  "question": "The English question",
+  "ai_personality_comment": "Witty Hinglish roast",
+  "yes_indices": [List of indices from POOL where the answer is YES]
 }}"""
     with st.spinner(random.choice(LOADING_LINES)):
-        for attempt in range(3):
+        for attempt in range(5): # Increased attempts to find a unique question
             res = call_ai(prompt)
             if res:
-                q_text = res.get("question", "").lower()
+                q_text = res.get("question", "").strip()
+                q_text_lower = q_text.lower()
+                
+                # STRICT DUPLICATE CHECK
+                past_texts = [h['q'].lower().strip() for h in st.session_state.history]
+                # Fix 3: Hallucination Check / Split Quality
+                yes_count = len(res.get("yes_indices", []))
+                pool_size = len(remaining)
+                
+                # If AI classifies 0 players or all players as Yes, it's a useless question
+                if yes_count == 0 or yes_count == pool_size:
+                    time.sleep(1)
+                    continue
+                
+                # If the split is extremely poor (less than 10% coverage on one side) in the first 4 rounds
+                if q_count <= 4 and (yes_count < pool_size * 0.1 or yes_count > pool_size * 0.9):
+                    time.sleep(1)
+                    continue
+                    
                 banned = ["will ", "next match", "score a", "hit a", "century in", "tomorrow", "tonight"]
                 # Reject if prediction or name-dropping in large pool
-                if any(b in q_text for b in banned) or (len(remaining) > 5 and any(p['Name'].lower() in q_text for p in remaining[:3])):
+                if any(b in q_text_lower for b in banned) or (len(remaining) > 5 and any(p['Name'].lower() in q_text_lower for p in remaining[:3])):
                     time.sleep(1)
                     continue
                 st.session_state.current_q = res
                 st.rerun()
         else:
+            # Fallback: if we keep getting duplicates, try to force a simple question
             st.session_state.game_state = "error"
-            st.session_state.last_error = "Neural Bridge disconnected. Possible traffic jam in AI sectors."
+            st.session_state.last_error = "AI is stuck in a loop. Try resetting the game or changing the player!"
 
 def make_guess():
     remaining = st.session_state.remaining_players
@@ -664,8 +697,8 @@ with st.sidebar:
         st.rerun()
     st.markdown("### 💡 API Key Help")
     st.info("""
-    **New Flagship Model Active:**
-    Use an **OpenRouter Key** to try the agentic **Kimi K2.6** model!
+    **High Accuracy Mode:**
+    Use an **OpenRouter Key** to try the smart **Llama 3.1 70B** model!
     """)
     st.markdown("[Get OpenRouter Key](https://openrouter.ai/keys)")
     st.markdown("[Get Groq Key](https://console.groq.com/keys)")
@@ -691,7 +724,7 @@ if st.session_state.game_state == "start":
         st.write("Think of any IPL player (Past or Present) and I will identify them in just 8 questions!")
         
         if env_key:
-            if env_key.startswith("sk-or-"): provider = "OpenRouter (Kimi K2.6)"
+            if env_key.startswith("sk-or-"): provider = "OpenRouter (Llama 3.1 70B)"
             elif env_key.startswith("csk-"): provider = "Cerebras"
             elif env_key.startswith("AIza"): provider = "Gemini"
             else: provider = "Groq"
