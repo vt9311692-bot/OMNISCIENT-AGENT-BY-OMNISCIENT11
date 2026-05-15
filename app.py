@@ -480,7 +480,7 @@ def call_ai(prompt, model_name=None):
                 response = client.chat.completions.create(
                     model="llama3.1-8b",
                     messages=[
-                        {"role": "system", "content": "You are a JSON-only API. Output STRICTLY valid JSON. No preamble."},
+                        {"role": "system", "content": "You are OMNISCIENT AGENT - CRICKET MIND READER 🧠🏏. MISSION: Identify player using career FACTS ONLY. BANNED: No future predictions or opinions. No specific names unless pool < 3. Output ONLY JSON."},
                         {"role": "user", "content": prompt}
                     ],
                     max_tokens=1500,
@@ -508,7 +508,7 @@ def call_ai(prompt, model_name=None):
             # Use 'gemini-1.5-flash-latest' to avoid 404 on some regions
             model = genai.GenerativeModel(
                 model_name="gemini-1.5-flash-latest",
-                system_instruction="You are OMNISCIENT AGENT CRICKET MIND READER MODE 🧠🏏. You are a savage IPL expert using English humor only. No Hindi or Hinglish allowed. Output ONLY strictly valid JSON."
+                system_instruction="You are OMNISCIENT AGENT - CRICKET MIND READER 🧠🏏. MISSION: Identify player using career FACTS ONLY. BANNED: No future predictions or opinions. Output ONLY JSON."
             )
             response = model.generate_content(
                 prompt,
@@ -531,10 +531,10 @@ def call_ai(prompt, model_name=None):
                 response = client.chat.completions.create(
                     model=model_name if model_name else "llama-3.1-8b-instant",
                     messages=[
-                        {"role": "system", "content": "You are a JSON-only API. Output STRICTLY valid JSON. No preamble."},
+                        {"role": "system", "content": "You are OMNISCIENT AGENT - CRICKET MIND READER 🧠🏏. MISSION: Identify player using career FACTS ONLY. BANNED: No future predictions or opinions. No specific names unless pool < 3. Output ONLY JSON."},
                         {"role": "user", "content": prompt}
                     ],
-                    temperature=0.1,
+                    temperature=0.0,
                     max_tokens=1500,
                     response_format={"type": "json_object"}
                 )
@@ -567,20 +567,36 @@ def get_next_question():
 POOL: {pool_data}
 HISTORY: {history}
 
-TASK: One Yes/No question in English to split the pool.
-OUTPUT: JSON with "question", "ai_personality_comment" (savage roast), and "yes_indices" (list of numbers from POOL).
+TASK: Generate ONE smart Yes/No fact question to split the POOL 50/50.
+
+✅ GOOD EXAMPLES (FACTUAL):
+- "Has he played for MI?"
+- "Is he an overseas player?"
+- "Is he a fast bowler?"
+- "Has he won an IPL Orange Cap?"
+
+❌ BAD EXAMPLES (BANNED):
+- "Will he score a century in the next match?" (NEVER ASK PREDICTIONS)
+- "Is he the most aggressive batter?" (NEVER ASK OPINIONS)
+- "Is he Virat Kohli?" (NEVER ASK NAMES unless pool < 3)
 
 JSON:
 {{
   "question": "",
-  "ai_personality_comment": "",
+  "ai_personality_comment": "Funny English Roast",
   "yes_indices": []
 }}"""
     with st.spinner(random.choice(LOADING_LINES)):
-        res = call_ai(prompt)
-        if res:
-            st.session_state.current_q = res
-            st.rerun()
+        for attempt in range(3):
+            res = call_ai(prompt)
+            if res:
+                q_text = res.get("question", "").lower()
+                banned = ["will ", "next match", "score a", "hit a", "century in", "tomorrow", "tonight"]
+                # Reject if prediction or name-dropping in large pool
+                if any(b in q_text for b in banned) or (len(remaining) > 5 and any(p['Name'].lower() in q_text for p in remaining[:3])):
+                    continue
+                st.session_state.current_q = res
+                st.rerun()
         else:
             st.session_state.game_state = "error"
             st.session_state.last_error = "Neural Bridge disconnected. Possible traffic jam in AI sectors."
@@ -749,8 +765,8 @@ elif st.session_state.game_state == "playing":
                 
                 prev_pool = list(st.session_state.remaining_players)
                 
-                # Filter pool based on indices
-                yes_indices = set(q.get("yes_indices", []))
+                # Filter pool based on indices (Robust integer conversion)
+                yes_indices = set(int(i) for i in q.get("yes_indices", []))
                 
                 if ans == "Yes":
                     st.session_state.remaining_players = [
