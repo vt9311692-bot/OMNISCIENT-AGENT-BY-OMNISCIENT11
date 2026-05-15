@@ -461,127 +461,56 @@ for key, default in [("history", []), ("count", 0), ("undo_stack", []), ("curren
 
 # --- AI LOGIC ---
 def call_ai(prompt, model_name=None):
-    # Determine which key to use (Session state takes priority over .env)
     current_key = st.session_state.get("api_key", os.getenv("CEREBRAS_API_KEY", os.getenv("GEMINI_API_KEY", os.getenv("GROQ_API_KEY", ""))))
-    
-    if not current_key:
-        st.error("No API Key detected. Please enter a key on the start screen.")
-        return None
+    if not current_key: return None
 
-    # 1. Try Cerebras (Optimized for speed)
+    # 1. Cerebras
     if current_key.startswith("csk-"):
-        if not HAS_CEREBRAS:
-            st.error("⚠️ Cerebras module not installed. Please run: pip install cerebras-cloud-sdk")
-            return None
-        import time
-        for attempt in range(3):
-            try:
-                client = Cerebras(api_key=current_key)
-                response = client.chat.completions.create(
-                    model="llama3.1-8b",
-                    messages=[
-                        {"role": "system", "content": "You are OMNISCIENT AGENT - CRICKET MIND READER 🧠🏏. MISSION: Identify player using career FACTS ONLY. BANNED: No future predictions or opinions. No specific names unless pool < 3. Output ONLY JSON."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=1500,
-                    response_format={"type": "json_object"}
-                )
-                content = response.choices[0].message.content.strip()
-                if "```json" in content: content = content.split("```json")[1].split("```")[0]
-                elif "```" in content: content = content.split("```")[1].split("```")[0]
-                return json.loads(content.strip())
-            except Exception as e:
-                err_msg = str(e).lower()
-                if ("rate" in err_msg or "queue" in err_msg or "traffic" in err_msg) and attempt < 2:
-                    time.sleep(2)
-                    continue
-                st.error(f"⚠️ Cerebras API Error: {str(e)}")
-                return None
-    
-    # 2. Try Gemini
+        try:
+            client = Cerebras(api_key=current_key)
+            response = client.chat.completions.create(
+                model="llama3.1-8b",
+                messages=[{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Career FACTS only. Output JSON."}, {"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            return json.loads(response.choices[0].message.content.strip())
+        except: return None
+
+    # 2. Gemini
     if current_key.startswith("AIza"):
-        if not HAS_GEMINI:
-            st.error("⚠️ Gemini module not installed on this server. Please update requirements.txt on GitHub.")
-            return None
         try:
             genai.configure(api_key=current_key)
-            # Use 'gemini-1.5-flash-latest' to avoid 404 on some regions
-            model = genai.GenerativeModel(
-                model_name="gemini-1.5-flash-latest",
-                system_instruction="You are OMNISCIENT AGENT - CRICKET MIND READER 🧠🏏. MISSION: Identify player using career FACTS ONLY. BANNED: No future predictions or opinions. Output ONLY JSON."
-            )
-            response = model.generate_content(
-                prompt,
-                generation_config={"response_mime_type": "application/json"}
-            )
-            content = response.text
-            if "```json" in content: content = content.split("```json")[1].split("```")[0]
-            elif "```" in content: content = content.split("```")[1].split("```")[0]
-            return json.loads(content.strip())
-        except Exception as e:
-            st.error(f"⚠️ Gemini API Error: {str(e)}")
-            return None
-    
-    # 3. Try Groq
-    if current_key.startswith("gsk"):
-        import time
-        for attempt in range(3):
-            try:
-                client = Groq(api_key=current_key)
-                response = client.chat.completions.create(
-                    model=model_name if model_name else "llama-3.1-8b-instant",
-                    messages=[
-                        {"role": "system", "content": "You are OMNISCIENT AGENT - CRICKET MIND READER 🧠🏏. MISSION: Identify player using career FACTS ONLY. BANNED: No predictions or opinions. HUMOR: Use savage Hinglish humor in the ai_personality_comment. Output ONLY JSON."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.0,
-                    max_tokens=1500,
-                    response_format={"type": "json_object"}
-                )
-                content = response.choices[0].message.content.strip()
-                # Fallback for unexpected markdown
-                if "```json" in content: content = content.split("```json")[1].split("```")[0]
-                elif "```" in content: content = content.split("```")[1].split("```")[0]
-                return json.loads(content.strip())
-            except Exception as e:
-                err_msg = str(e).lower()
-                if ("rate" in err_msg or "429" in err_msg) and attempt < 2:
-                    time.sleep(5)
-                    continue
-                st.error(f"⚠️ Groq API Error: {str(e)}")
-                return None
+            model = genai.GenerativeModel("gemini-1.5-flash-latest", system_instruction="You are OMNISCIENT AGENT. MISSION: Career FACTS only. Output JSON.")
+            response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
+            return json.loads(response.text.strip())
+        except: return None
 
-    # 4. Try OpenRouter (Kimi K2.6 Support)
+    # 3. Groq
+    if current_key.startswith("gsk"):
+        try:
+            client = Groq(api_key=current_key)
+            response = client.chat.completions.create(
+                model=model_name if model_name else "llama-3.1-8b-instant",
+                messages=[{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Career FACTS only. Output JSON."}, {"role": "user", "content": prompt}],
+                temperature=0.0, response_format={"type": "json_object"}
+            )
+            return json.loads(response.choices[0].message.content.strip())
+        except: return None
+
+    # 4. OpenRouter
     if current_key.startswith("sk-or-"):
         try:
             import requests
-            headers = {
-                "Authorization": f"Bearer {current_key}",
-                "HTTP-Referer": "https://github.com/omniscient-agent", # Required by OpenRouter
-                "X-Title": "Omniscient Agent",
-                "Content-Type": "application/json"
-            }
+            headers = {"Authorization": f"Bearer {current_key}", "Content-Type": "application/json"}
             payload = {
                 "model": model_name if model_name else "moonshotai/kimi-k2.6",
-                "messages": [
-                    {"role": "system", "content": "You are OMNISCIENT AGENT - CRICKET MIND READER 🧠🏏. MISSION: Identify player using career FACTS ONLY. BANNED: No predictions or opinions. HUMOR: Use savage Hinglish humor in the ai_personality_comment. Output ONLY JSON."},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.0,
-                "max_tokens": 1500,
-                "response_format": {"type": "json_object"}
+                "messages": [{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Career FACTS only. Output JSON."}, {"role": "user", "content": prompt}],
+                "temperature": 0.0, "response_format": {"type": "json_object"}
             }
             response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
-            response.raise_for_status()
-            content = response.json()['choices'][0]['message']['content'].strip()
-            if "```json" in content: content = content.split("```json")[1].split("```")[0]
-            elif "```" in content: content = content.split("```")[1].split("```")[0]
-            return json.loads(content.strip())
-        except Exception as e:
-            st.error(f"⚠️ OpenRouter Error: {str(e)}")
-            return None
+            return json.loads(response.json()['choices'][0]['message']['content'].strip())
+        except: return None
 
-    st.error("Unrecognized API Key format. Use Cerebras (csk-), Gemini (AIza), Groq (gsk), or OpenRouter (sk-or-).")
     return None
 
 def get_next_question():
