@@ -522,9 +522,9 @@ def call_ai(prompt, model_name=None):
                 "X-Title": "Omniscient Agent"
             }
             payload = {
-                "model": model_name if model_name else "meta-llama/llama-3.1-70b-instruct",
+                "model": model_name if model_name else "google/gemini-flash-1.5",
                 "messages": [{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
-                "temperature": 0.0, "max_tokens": 800, "response_format": {"type": "json_object"}
+                "temperature": 0.0, "max_tokens": 1200, "response_format": {"type": "json_object"}
             }
             res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=30)
             if res.status_code != 200:
@@ -560,26 +560,37 @@ def get_next_question():
     past_questions = [h['q'] for h in st.session_state.history]
     history_str = ",".join([f"{h['q']}={h['a']}" for h in st.session_state.history])
     
-    # Fix 1: Decision Tree Strategy (Funnel Logic)
+    # Fix 1: Adaptive Decision Tree Strategy
     q_count = st.session_state.count + 1
-    if q_count == 1: focus = "NATIONALITY (Indian vs Overseas)"
-    elif q_count == 2: focus = "ROLE (Batsman, Bowler, Wicketkeeper, or All-rounder)"
-    elif q_count == 3: focus = "BATTING HAND (Right-handed vs Left-handed)"
-    elif q_count == 4: focus = "IPL TEAM (Current or primary team)"
+    remaining = st.session_state.remaining_players
+    
+    # Pre-check pool to see if focuses are already resolved
+    nationalities = set(p.get('Nationality','') for p in remaining)
+    roles = set(p.get('Role','') for p in remaining)
+    teams = set(p.get('Team','') for p in remaining)
+    
+    if q_count == 1 and len(nationalities) > 1: focus = "NATIONALITY (Indian vs Overseas)"
+    elif q_count <= 2 and len(roles) > 1: focus = "ROLE (Batsman, Bowler, Wicketkeeper, or All-rounder)"
+    elif q_count <= 3: focus = "BATTING HAND (Right-handed vs Left-handed)"
+    elif q_count <= 4 and len(teams) > 1: focus = "IPL TEAM (Current or primary team)"
     elif q_count == 5: focus = "MAJOR ACHIEVEMENT (Orange/Purple cap, World Cup winner, etc.)"
     else: focus = "ERA / UNIQUE STATS / SPECIFIC CAREER MILESTONES"
 
-    prompt = f"""
+    with st.spinner(random.choice(LOADING_LINES)):
+        for attempt in range(10): # Increased attempts to 10 for maximum robustness
+            # If we're struggling (attempt > 2), loosen the focus constraint
+            current_focus = focus if attempt < 3 else "ANY smart Yes/No cricket question to split the pool 50/50"
+            
+            prompt = f"""
 POOL: {pool_data}
 HISTORY: {history_str}
 BANNED QUESTIONS: {past_questions}
 CURRENT TURN: {q_count}
-MANDATORY FOCUS: {focus}
+SUGGESTED FOCUS: {current_focus}
 
-TASK: Generate ONE high-quality Yes/No factual question about the MANDATORY FOCUS to split the POOL as close to 50/50 as possible.
-
+TASK: Generate ONE high-quality Yes/No factual question to split the POOL as close to 50/50 as possible.
 STRICT RULES:
-1. CRITICAL: Your question MUST focus on: {focus}.
+1. FOCUS: {current_focus}.
 2. Use the POOL metadata (Team, Role, Nationality) to ensure `yes_indices` are 100% accurate.
 3. NEVER ask a question from the BANNED list.
 4. Character: Savage Hinglish humor in `ai_personality_comment`.
@@ -591,40 +602,38 @@ JSON OUTPUT:
   "ai_personality_comment": "Witty Hinglish roast",
   "yes_indices": [List of indices from POOL where the answer is YES]
 }}"""
-    with st.spinner(random.choice(LOADING_LINES)):
-        for attempt in range(5): # Increased attempts to find a unique question
             res = call_ai(prompt)
             if res:
                 q_text = res.get("question", "").strip()
                 q_text_lower = q_text.lower()
                 
-                # STRICT DUPLICATE CHECK
+                # DUPLICATE CHECK
                 past_texts = [h['q'].lower().strip() for h in st.session_state.history]
-                # Fix 3: Hallucination Check / Split Quality
-                yes_count = len(res.get("yes_indices", []))
+                if q_text_lower in past_texts:
+                    continue
+                
+                # SPLIT QUALITY CHECK
+                yes_indices = res.get("yes_indices", [])
+                yes_count = len(yes_indices)
                 pool_size = len(remaining)
                 
                 # If AI classifies 0 players or all players as Yes, it's a useless question
                 if yes_count == 0 or yes_count == pool_size:
-                    time.sleep(1)
                     continue
                 
-                # If the split is extremely poor (less than 10% coverage on one side) in the first 4 rounds
-                if q_count <= 4 and (yes_count < pool_size * 0.1 or yes_count > pool_size * 0.9):
-                    time.sleep(1)
+                # If the split is extremely poor in early rounds, retry unless we're on a late attempt
+                if attempt < 4 and q_count <= 4 and (yes_count < pool_size * 0.05 or yes_count > pool_size * 0.95):
                     continue
                     
                 banned = ["will ", "next match", "score a", "hit a", "century in", "tomorrow", "tonight"]
-                # Reject if prediction or name-dropping in large pool
                 if any(b in q_text_lower for b in banned) or (len(remaining) > 5 and any(p['Name'].lower() in q_text_lower for p in remaining[:3])):
-                    time.sleep(1)
                     continue
+
                 st.session_state.current_q = res
                 st.rerun()
         else:
-            # Fallback: if we keep getting duplicates, try to force a simple question
             st.session_state.game_state = "error"
-            st.session_state.last_error = "AI is stuck in a loop. Try resetting the game or changing the player!"
+            st.session_state.last_error = "Neural Bridge is jammed. The pool might be too small or the logic is conflicting. Try refreshing!"
 
 def make_guess():
     remaining = st.session_state.remaining_players
@@ -697,8 +706,8 @@ with st.sidebar:
         st.rerun()
     st.markdown("### 💡 API Key Help")
     st.info("""
-    **High Accuracy Mode:**
-    Use an **OpenRouter Key** to try the smart **Llama 3.1 70B** model!
+    **Ultra-Reliable Mode:**
+    Use an **OpenRouter Key** to try the surgical **Gemini Flash 1.5**!
     """)
     st.markdown("[Get OpenRouter Key](https://openrouter.ai/keys)")
     st.markdown("[Get Groq Key](https://console.groq.com/keys)")
@@ -724,7 +733,7 @@ if st.session_state.game_state == "start":
         st.write("Think of any IPL player (Past or Present) and I will identify them in just 8 questions!")
         
         if env_key:
-            if env_key.startswith("sk-or-"): provider = "OpenRouter (Llama 3.1 70B)"
+            if env_key.startswith("sk-or-"): provider = "OpenRouter (Gemini Flash 1.5)"
             elif env_key.startswith("csk-"): provider = "Cerebras"
             elif env_key.startswith("AIza"): provider = "Gemini"
             else: provider = "Groq"
