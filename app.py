@@ -634,19 +634,24 @@ with st.sidebar:
     st.markdown("[Get Groq Key](https://console.groq.com/keys)")
     st.markdown("[Get Gemini Key](https://aistudio.google.com/app/apikey)")
     
-    st.markdown("---")
-    st.caption("OMNISCIENT v2.8 | Llama 3.1 8B Optimized")
+# --- HINGLISH SLOGANS & WELCOME ---
+WELCOME_LINES = [
+    "Swagat hai, let me read your mind! 🧠🏏",
+    "IPL Expert ho? Chalo dekhte hain kitna dimaag hai! 😎",
+    "Mind reading shuru karein? Taiyaar ho jao roast ke liye! 🔥",
+    "Player socho, main pehchanunga. Challenge accepted? 🎯",
+    "Dhoni, Kohli ya Rohit? Kiski yaad aa rahi hai? 🤔"
+]
 
-st.markdown("<h1 class='main-title'>OMNISCIENT AGENT</h1>", unsafe_allow_html=True)
-st.markdown("<p class='tagline'>🧠 CRICKET MIND READER MODE | The Invisible Mind of IPL 🏏</p>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-title'>OMNISCIENT AGENT 🧠</h1>", unsafe_allow_html=True)
+st.markdown("<p class='tagline'>🔥 ANTARYAMI MODE: Dimaag Padha Jaayega, Roast Kiya Jaayega! 🏏</p>", unsafe_allow_html=True)
 
 if st.session_state.game_state == "start":
     env_key = os.getenv("OPENROUTER_API_KEY", os.getenv("CEREBRAS_API_KEY", os.getenv("GEMINI_API_KEY", os.getenv("GROQ_API_KEY", ""))))
     
     with st.container():
-        st.markdown("<div class='glass-card'></div>", unsafe_allow_html=True)
         st.markdown(f"### {random.choice(WELCOME_LINES)}")
-        st.write("")
+        st.write("Think of any IPL player (Past or Present) and I will identify them in just 8 questions!")
         
         if env_key:
             if env_key.startswith("sk-or-"): provider = "OpenRouter (Kimi K2.6)"
@@ -658,12 +663,12 @@ if st.session_state.game_state == "start":
             
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("🚀 Start Guessing!", type="primary", use_container_width=True):
+                if st.button("🚀 Dimaag Padho!", type="primary", use_container_width=True):
                     st.session_state.api_key = env_key
                     st.session_state.game_state = "playing"
                     get_next_question()
             with c2:
-                if st.button("🔑 Switch Key", use_container_width=True):
+                if st.button("🔑 Chabi Badlo", use_container_width=True):
                     if os.path.exists(".env"): os.remove(".env")
                     for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY"]:
                         if k in os.environ: del os.environ[k]
@@ -671,19 +676,19 @@ if st.session_state.game_state == "start":
                     st.session_state.game_state = "start"
                     st.rerun()
         else:
-            st.info("Paste your API key below to connect to the Neural Network.")
-            api_key_input = st.text_input("🔑 API Key", type="password", placeholder="Paste Groq, Gemini, or Cerebras key here...")
+            st.info("Bhai pehle apni API key daalo connection banane ke liye!")
+            api_key_input = st.text_input("🔑 API Key Daalo", type="password", placeholder="Groq, Gemini, ya Cerebras key yahan chipkao...")
             
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("🚀 Shuru Karo!", type="primary", use_container_width=True):
+                if st.button("🚀 Shuru Karein?", type="primary", use_container_width=True):
                     if api_key_input:
                         st.session_state.api_key = api_key_input
                         save_key_to_env(api_key_input)
                         st.session_state.game_state = "playing"
                         get_next_question()
                     else:
-                        st.error("Bhai pehle API key toh daal! 🔑")
+                        st.error("Bhai pehle key toh do! 🔑")
 
 elif st.session_state.game_state == "playing":
     q = st.session_state.current_q
