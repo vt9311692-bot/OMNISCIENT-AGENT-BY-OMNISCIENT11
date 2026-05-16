@@ -469,14 +469,14 @@ def call_ai(prompt, model_name=None):
         elif "```" in text: text = text.split("```")[1].split("```")[0]
         return text.strip()
 
-    # 1. GROQ (FAST & FREE)
+    # 1. GROQ (ULTRA FAST & HIGH LIMITS)
     if current_key.startswith("gsk_"):
         try:
             client = Groq(api_key=current_key)
             response = client.chat.completions.create(
-                model=model_name if model_name else "llama-3.3-70b-versatile",
+                model=model_name if model_name else "llama-3.3-8b-instant",
                 messages=[{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
-                temperature=0.0, response_format={"type": "json_object"}
+                temperature=0.0, max_tokens=300, response_format={"type": "json_object"}
             )
             return json.loads(clean_json(response.choices[0].message.content))
         except Exception as e:
@@ -522,11 +522,15 @@ def get_next_question():
         return make_guess()
 
     # Compress data to avoid token limit errors
-    # Use structured JSON for the pool to help DeepSeek-V3.2 reason better
-    pool_data = json.dumps([
-        {"id": i, "name": p['Name'], "team": p.get('Team','?'), "role": p.get('Role','?'), "nat": p.get('Nationality','?')} 
-        for i, p in enumerate(remaining)
-    ])
+    # EXTREME COMPRESSION: Reduces token usage by ~70%
+    def ultra_compress(p):
+        name = p['Name'][:12] # Truncate long names
+        team = p.get('Team','?')[:3].upper()
+        role = p.get('Role','?')[:2].upper()
+        nat = "IN" if "Indian" in p.get('Nationality','') else "OS"
+        return f"{name}[{team},{role},{nat}]"
+
+    pool_data = "|".join([f"{i}:{ultra_compress(p)}" for i, p in enumerate(remaining)])
     past_questions = [h['q'] for h in st.session_state.history]
     history_str = ",".join([f"{h['q']}={h['a']}" for h in st.session_state.history])
     
@@ -559,19 +563,18 @@ CURRENT TURN: {q_count}
 SUGGESTED FOCUS: {current_focus}
 
 TASK: Generate ONE high-quality Yes/No factual question to split the POOL as close to 50/50 as possible.
-STRICT RULES:
 1. FOCUS: {current_focus}.
-2. Use the POOL metadata (team, role, nat) to ensure `yes_indices` are 100% accurate.
-3. NEVER ask a question from the BANNED list.
-4. `yes_indices` MUST contain the "id" numbers of ALL players in the POOL for whom the answer is YES.
-5. Character: Savage Hinglish humor in `ai_personality_comment`.
+2. Use POOL metadata (Team, Role, Nat: IN=Indian, OS=Overseas) for accuracy.
+3. NEVER ask a banned question.
+4. `yes_indices` = list of IDs from POOL for YES answers.
+5. Character: Savage Hinglish humor.
 
-JSON OUTPUT (NO EXTRA TEXT):
+JSON OUTPUT (SHORT):
 {{
-  "thought": "Logic for this split",
-  "question": "The English question",
-  "ai_personality_comment": "Witty Hinglish roast",
-  "yes_indices": [List of "id" integers from the POOL JSON]
+  "thought": "Logic",
+  "question": "English question",
+  "ai_personality_comment": "Witty roast",
+  "yes_indices": [ID integers]
 }}"""
             res = call_ai(prompt)
             if res:
