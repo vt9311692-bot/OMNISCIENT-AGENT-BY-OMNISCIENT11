@@ -584,77 +584,72 @@ def get_next_question():
     q_count = st.session_state.count + 1
 
     with st.spinner(random.choice(LOADING_LINES)):
-        if use_local:
-            # Ask AI to pick the best CATEGORY and VALUE based on STATS
-            prompt = f"""
+        # Triple-Lock: Track used logic, categories, and values to prevent any repetition
+        used_logic = [f"{h.get('cat')}:{h.get('val')}" for h in st.session_state.history if 'cat' in h]
+        used_cats = [str(h.get('cat')) for h in st.session_state.history if 'cat' in h]
+        
+        for attempt in range(3):
+            if use_local:
+                prompt = f"""
 STATS: {stats}
-HISTORY: {st.session_state.history}
+BANNED_LOGIC: {used_logic}
+BANNED_CATEGORIES: {used_cats}
 TURN: {q_count}/8
 
-TASK: Pick the best attribute to split the pool 50/50.
-1. Return the `category` and `value` (e.g., "Team" and "CSK").
-2. Write a savage Hinglish `question` and `ai_personality_comment`.
-3. Valid Categories: Overseas, Role, Team, Batting, Captain, Keeper.
+TASK: Pick a CATEGORY and VALUE to split the pool 50/50. 
+CRITICAL RULES:
+1. DO NOT repeat any category from {used_cats}.
+2. DO NOT repeat any logic from {used_logic}.
+3. If you repeat, the neural link breaks. MOVE TO A NEW TRAIT (e.g., if you asked Team, ask Role now).
+4. Question must be in HINGLISH.
 
-JSON:
-{{
-  "category": "Role",
-  "value": "Bowler",
-  "question": "Kya wo player primarily ek Bowler hai?",
-  "ai_personality_comment": "Witty roast about bowling",
-  "thought": "Splitting pool by Role: Bowler"
-}}"""
-        else:
-            # Full pool mode for final precision
-            pool_data = "|".join([f"{i}:{p['Name'][:10]}" for i, p in enumerate(remaining)])
-            prompt = f"""
+JSON: {{"category": "...", "value": "...", "question": "Hinglish question", "ai_personality_comment": "Roast"}}"""
+            else:
+                pool_data = "|".join([f"{i}:{p['Name'][:10]}" for i, p in enumerate(remaining)])
+                prompt = f"""
 POOL: {pool_data}
 HISTORY: {st.session_state.history}
 TURN: {q_count}/8
+TASK: YES/NO question. Be witty. No repeats.
+JSON: {{"question": "...", "ai_personality_comment": "...", "yes_indices": [IDs]}}"""
 
-TASK: Generate a precise Yes/No question in HINGLISH.
-1. `yes_indices` MUST be exact IDs from POOL.
-2. Be savage in `ai_personality_comment`.
-
-JSON:
-{{
-  "question": "Hinglish question",
-  "ai_personality_comment": "Roast",
-  "yes_indices": [IDs],
-  "thought": "Logic"
-}}"""
-
-        res = call_ai(prompt)
-        if res:
-            if use_local:
+            res = call_ai(prompt)
+            if res:
+                q_text = res.get("question", "").strip()
                 cat = res.get("category")
                 val = res.get("value")
                 
-                # Calculate indices locally and instantly
-                yes_indices = []
-                for i, p in enumerate(remaining):
-                    match = False
-                    if cat == "Overseas": match = p.get("Overseas") == val
-                    elif cat == "Role": match = p.get("Role") == val
-                    elif cat == "Team": match = p.get("Team") == val
-                    elif cat == "Batting": match = (val in str(p.get("Batting", "")))
-                    elif cat == "Captain": match = ("Yes" in str(p.get("Captain", ""))) if val == "Yes" else ("Yes" not in str(p.get("Captain", "")))
-                    elif cat == "Keeper": match = ("Yes" in str(p.get("Keeper", ""))) if val == "Yes" else ("Yes" not in str(p.get("Keeper", "")))
-                    
-                    if match: yes_indices.append(i)
+                # MULTI-LAYER DUPLICATE CHECK
+                is_dup = any(h['q'].lower().strip() == q_text.lower().strip() for h in st.session_state.history)
+                if use_local and f"{cat}:{val}" in used_logic: is_dup = True
                 
-                res["yes_indices"] = yes_indices
-            
-            # Final safety check
-            if not res.get("yes_indices") and not use_local:
-                st.session_state.last_error = "Neural Bridge jammed."
-                st.rerun()
+                if is_dup: continue
 
-            st.session_state.current_q = res
-            st.rerun()
+                if use_local:
+                    yes_indices = []
+                    for i, p in enumerate(remaining):
+                        match = False
+                        if cat == "Overseas": match = p.get("Overseas") == val
+                        elif cat == "Role": match = p.get("Role") == val
+                        elif cat == "Team": match = p.get("Team") == val
+                        elif cat == "Batting": match = (val in str(p.get("Batting", "")))
+                        elif cat == "Captain": match = ("Yes" in str(p.get("Captain", ""))) if val == "Yes" else ("Yes" not in str(p.get("Captain", "")))
+                        elif cat == "Keeper": match = ("Yes" in str(p.get("Keeper", ""))) if val == "Yes" else ("Yes" not in str(p.get("Keeper", "")))
+                        if match: yes_indices.append(i)
+                    
+                    if not yes_indices or len(yes_indices) == len(remaining): continue
+                    res["yes_indices"] = yes_indices
+                    # Store logic for history
+                    res["cat"] = cat
+                    res["val"] = val
+                
+                if not res.get("yes_indices") and not use_local: continue
+                
+                st.session_state.current_q = res
+                st.rerun()
         else:
             st.session_state.game_state = "error"
-            st.session_state.last_error = "Neural Bridge is jammed. Try refreshing."
+            st.session_state.last_error = "Bhai, dimag hang ho gaya! Pool too complex. Restarting link..."
             st.rerun()
 
 def make_guess():
@@ -701,16 +696,21 @@ JSON OUTPUT (MANDATORY):
   "celebration": "One-liner witty remark about the victory"
 }}"""
     
-    with st.spinner("Locking in final answer... 🔒"):
-        # Use llama-3.1-8b-instant for the final guess to save cost and increase speed
-        res = call_ai(prompt) # Let provider-specific logic choose the best model
+    with st.spinner("Locking in final answer... 🎯"):
+        # Strategy: Use a more accurate model (70B) for the final guess if possible
+        # We try 8B first for speed, then 70B for precision if it fails
+        res = call_ai(prompt)
+        if not res:
+            # Fallback to a larger model or retry
+            res = call_ai(prompt, model_name="llama-3.1-70b-versatile")
+            
         if res:
             st.session_state.final_guess = res
             st.session_state.game_state = "result"
             st.rerun()
         else:
             st.session_state.game_state = "error"
-            st.session_state.last_error = "Bhai, prediction logic crash ho gayi! Neural feedback loop broke."
+            st.session_state.last_error = "Bhai, prediction logic crash ho gayi! Pool might be too fragmented. Please restart!"
             st.rerun()
 
 # --- UI RENDERING ---
@@ -816,7 +816,7 @@ elif st.session_state.game_state == "playing":
                     "count": st.session_state.count,
                     "current_q": st.session_state.current_q
                 })
-                st.session_state.history.append({"q": q["question"], "a": ans})
+                st.session_state.history.append({"q": q["question"], "a": ans, "cat": q.get("cat"), "val": q.get("val")})
                 
                 prev_pool = list(st.session_state.remaining_players)
                 
