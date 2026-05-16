@@ -596,7 +596,10 @@ BANNED_LOGIC: {used_logic}
 BANNED_CATEGORIES: {used_cats}
 TURN: {q_count}/8
 TASK: Pick a CATEGORY and VALUE to split the pool 50/50. 
-JSON: {{"category": "...", "value": "...", "question": "Hinglish question", "ai_personality_comment": "Roast"}}"""
+RULE: You MUST generate a Yes/No question in HINGLISH that the user can answer about their chosen player. 
+DO NOT ask about the pool or stats. 
+Example: "Kya wo player primarily ek Bowler hai?"
+JSON: {{"category": "...", "value": "...", "question": "Hinglish question", "ai_personality_comment": "Witty roast"}}"""
             else:
                 pool_data = "|".join([f"{i}:{p['Name'][:10]}" for i, p in enumerate(remaining)])
                 prompt = f"""
