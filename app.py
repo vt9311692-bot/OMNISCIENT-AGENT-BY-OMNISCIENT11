@@ -677,6 +677,17 @@ JSON: {{"question": "...", "ai_personality_comment": "...", "yes_indices": [IDs]
                             }
                             st.rerun()
             
+            # FINAL IDENTITY CHECK: If even stats can't split them, just ask about a specific player
+            if remaining:
+                p = remaining[0]
+                st.session_state.current_q = {
+                    "question": f"Kya aap {p['Name']} ke baare mein soch rahe hain?",
+                    "ai_personality_comment": "Bhai, mera dimag thak gaya hai, ab toh seedha naam hi pooch raha hoon! 😅",
+                    "yes_indices": [0], # Only the first player matches this name
+                    "cat": "Identity", "val": p["Name"]
+                }
+                st.rerun()
+            
             st.session_state.game_state = "error"
             st.session_state.last_error = "Neural Bridge is jammed. Please refresh and try a different player!"
             st.rerun()
