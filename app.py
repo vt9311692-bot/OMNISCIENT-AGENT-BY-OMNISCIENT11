@@ -588,26 +588,25 @@ def get_next_question():
         used_logic = [f"{h.get('cat')}:{h.get('val')}" for h in st.session_state.history if 'cat' in h]
         used_cats = [str(h.get('cat')) for h in st.session_state.history if 'cat' in h]
         
-        for attempt in range(5): # Increased to 5 for stability
+        for attempt in range(5): 
             if use_local:
                 prompt = f"""
 STATS: {stats}
 BANNED_LOGIC: {used_logic}
-BANNED_CATEGORIES: {used_cats}
 TURN: {q_count}/8
 TASK: Pick a TECHNICAL CATEGORY and VALUE from STATS to split the pool 50/50. 
-CRITICAL RULES:
-1. ONLY ask about technical cricket traits (Team, Role, Batting/Bowling style, Captaincy, Keeper).
-2. NEVER ask about personal life, family, money, or background.
-3. Question must be in HINGLISH.
-Example: "Kya wo player primarily ek Bowler hai?"
-JSON: {{"category": "...", "value": "...", "question": "Hinglish question", "ai_personality_comment": "Cricket roast"}}"""
+REFINEMENT: Use "Deep Context" for better questions. 
+Hints: CSK=Yellow/Thala, RCB=Red/King, MI=Blue/Hitman, KKR=Purple, GT=Titan/Hardik, RR=Pink.
+Logic: You can combine traits (e.g. "Kya wo player ek Blue jersey team ka All-rounder hai?")
+JSON: {{"category": "...", "value": "...", "question": "Fine Hinglish question", "ai_personality_comment": "Witty roast"}}"""
             else:
-                pool_data = "|".join([f"{i}:{p['Name'][:10]}" for i, p in enumerate(remaining)])
+                # Show samples to help AI differentiate
+                samples = "|".join([f"{p['Name']}({p.get('Team')},{p.get('Role')})" for p in remaining[:5]])
                 prompt = f"""
-POOL: {pool_data}
+POOL SAMPLES: {samples}
+POOL SIZE: {len(remaining)}
 HISTORY: {st.session_state.history}
-TASK: Unique YES/NO question. No repeats.
+TASK: Unique YES/NO question. Use "Deep Context" (Rivalries, Team Colors, Iconic traits).
 JSON: {{"question": "...", "ai_personality_comment": "...", "yes_indices": [IDs]}}"""
 
             res = call_ai(prompt)
