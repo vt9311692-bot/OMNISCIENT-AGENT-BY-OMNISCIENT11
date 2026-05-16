@@ -37,32 +37,32 @@ st.set_page_config(page_title="OMNISCIENT AGENT | IPL Akinator", page_icon="🧠
 
 # --- HINGLISH HUMOR LINES ---
 LOADING_LINES = [
-    "Burning through neural patterns... 🔥",
-    "Just warming up, calculating the odds! 🧠",
-    "Searching the Cricket Encyclopedia... 📚",
-    "Checking the pacer's speed! ⚡",
-    "Watching IPL highlights in the neural network... 📺",
-    "Looking for a spin wizard! 🪄",
-    "Checking for stat-padders... 🧐",
-    "Shaun Pollock level precision in the death overs! 🏏",
-    "Digging through IPL history, hang on! 🏏",
-    "Patience, data crunching in progress! 🧠",
-    "Taking a catch at the boundary, wait! 🏃‍♂️",
+    "Dimaag ke ghode dauda raha hoon... 🔥",
+    "Bas thoda wait, calculation chal rahi hai! 🧠",
+    "Cricket encyclopedia scan kar raha hoon... 📚",
+    "Pacer ki speed check ho rahi hai! ⚡",
+    "Neural network mein IPL highlights dekh raha hoon... 📺",
+    "Spin wizard ko search kar raha hoon! 🪄",
+    "Stat-padders ko filter kar raha hoon... 🧐",
+    "Shaun Pollock level precision death overs mein! 🏏",
+    "IPL history check kar raha hoon, ruko zara! 🏏",
+    "Patience rakho, data crunch ho raha hai! 🧠",
+    "Boundary pe catch pakad raha hoon, wait! 🏃‍♂️",
 ]
 WELCOME_LINES = [
-    "Think of an IPL cricketer, I'll find them! 🏏",
-    "Mind reader mode active! Think of a special player! 🧠",
-    "Think of any player, my mind is faster than Google! ⚡",
-    "I am OMNISCIENT, don't forget it! 😎",
-    "Pick a tough player! A dark horse perhaps? 🏇",
-    "I am the cricket encyclopedia, try me! 📖",
+    "Kisi bhi IPL cricketer ke baare mein socho, main pehchan lunga! 🏏",
+    "Mind reader mode active! Ek special player socho! 🧠",
+    "Koi bhi player socho, mera dimaag Google se bhi fast hai! ⚡",
+    "I am OMNISCIENT, bhulna mat! 😎",
+    "Koi tough player pick karo! Chhupa rustam hai kya? 🏇",
+    "Main cricket ka encyclopedia hoon, try me! 📖",
 ]
 WRONG_GUESS_LINES = [
-    "Wait, that's wrong? You actually got me out! 💪",
-    "Let's try again... I was just warming up anyway! 🔥",
-    "Wrong guess? Impossible... you must have given me the wrong info! 😤",
-    "You just bowled a perfect googly! Let's reset the field. 🔄",
-    "A swing and a miss! Let's go for another round. 🏏",
+    "Wait, galat hai? Aapne toh mujhe out kar diya! 💪",
+    "Chalo phir se try karte hain... main toh bas warm-up kar raha tha! 🔥",
+    "Wrong guess? Impossible... aapne hi galat info di hogi! 😤",
+    "Aapne toh perfect googly daal di! Field reset karte hain. 🔄",
+    "Swing and a miss! Chalo ek aur round. 🏏",
 ]
 
 # --- APPLE MUSIC DARK GLASSMORPHISM CSS ---
@@ -551,30 +551,28 @@ def get_next_question():
     else: focus = "ERA / UNIQUE STATS / SPECIFIC CAREER MILESTONES"
 
     with st.spinner(random.choice(LOADING_LINES)):
-        for attempt in range(10): # Increased attempts to 10 for maximum robustness
-            # If we're struggling (attempt > 2), loosen the focus constraint
-            current_focus = focus if attempt < 3 else "ANY smart Yes/No cricket question to split the pool 50/50"
+        for attempt in range(5): # Reduced for speed
+            current_focus = focus if attempt < 2 else "ANY smart Yes/No cricket question"
             
             prompt = f"""
 POOL: {pool_data}
 HISTORY: {history_str}
-BANNED QUESTIONS: {past_questions}
-CURRENT TURN: {q_count}
-SUGGESTED FOCUS: {current_focus}
+BANNED: {past_questions}
+TURN: {q_count}
+FOCUS: {current_focus}
 
-TASK: Generate ONE high-quality Yes/No factual question to split the POOL as close to 50/50 as possible.
-1. FOCUS: {current_focus}.
-2. Use POOL metadata (Team, Role, Nat: IN=Indian, OS=Overseas) for accuracy.
-3. NEVER ask a banned question.
-4. `yes_indices` = list of IDs from POOL for YES answers.
-5. Character: Savage Hinglish humor.
+TASK: Generate ONE Yes/No question in HINGLISH to split the POOL 50/50.
+1. Question must be in HINGLISH (Mix of Hindi and English).
+2. Example: "Kya wo player Overseas player hai?" or "Kya wo batsman Left-handed hai?"
+3. `yes_indices` = list of IDs from POOL for YES answers.
+4. Be witty and savage in `ai_personality_comment` (Hinglish).
 
-JSON OUTPUT (SHORT):
+JSON:
 {{
   "thought": "Logic",
-  "question": "English question",
+  "question": "Hinglish Question",
   "ai_personality_comment": "Witty roast",
-  "yes_indices": [ID integers]
+  "yes_indices": [IDs]
 }}"""
             res = call_ai(prompt)
             if res:
@@ -591,12 +589,10 @@ JSON OUTPUT (SHORT):
                 yes_count = len(yes_indices)
                 pool_size = len(remaining)
                 
-                # If AI classifies 0 players or all players as Yes, it's a useless question
                 if yes_count == 0 or yes_count == pool_size:
                     continue
                 
-                # If the split is extremely poor in early rounds, retry unless we're on a late attempt
-                if attempt < 4 and q_count <= 4 and (yes_count < pool_size * 0.05 or yes_count > pool_size * 0.95):
+                if attempt < 3 and q_count <= 4 and (yes_count < pool_size * 0.05 or yes_count > pool_size * 0.95):
                     continue
                     
                 banned = ["will ", "next match", "score a", "hit a", "century in", "tomorrow", "tonight"]
@@ -751,9 +747,9 @@ elif st.session_state.game_state == "playing":
             
             col_a, col_b = st.columns([1,1])
             with col_a:
-                st.markdown(f"<div><span class='probe-label'>PROBE</span><br><span class='probe-count'>{st.session_state.count + 1} / 8</span></div>", unsafe_allow_html=True)
+                st.markdown(f"<div><span class='probe-label'>SAWAAL</span><br><span class='probe-count'>{st.session_state.count + 1} / 8</span></div>", unsafe_allow_html=True)
             with col_b:
-                st.markdown(f"<div style='text-align:right'><span class='probe-label'>SUSPECTS</span><br><span class='candidates-count'>{len(st.session_state.remaining_players)}</span></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='text-align:right'><span class='probe-label'>CANDIDATES</span><br><span class='candidates-count'>{len(st.session_state.remaining_players)}</span></div>", unsafe_allow_html=True)
             
             st.progress(st.session_state.count / 8.0)
             
