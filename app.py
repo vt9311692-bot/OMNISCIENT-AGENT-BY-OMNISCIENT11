@@ -358,17 +358,22 @@ def load_data():
     players = []
     seen_names = set()
     
-    def add_player(name, team="", role="", nationality="", nickname="", funny="", tag=""):
+    def add_player(name, team="", role="", nationality="", nickname="", funny="", tag="", batting="", bowling="", captain="", keeper="", overseas=""):
         name = name.strip()
         if name and name.lower() not in seen_names:
+            # Normalize attributes for logic
+            is_overseas = "Yes" if (overseas and str(overseas).lower() == "yes") or (nationality and "indian" not in str(nationality).lower()) else "No"
             players.append({
-                "Name": name, "Team": team, "Role": role,
-                "Nationality": nationality, "Nickname": nickname,
-                "FunnyName": funny, "Tag": tag,
+                "Name": name, "Team": str(team or ""), "Role": str(role or ""),
+                "Nationality": str(nationality or ""), "Nickname": str(nickname or ""),
+                "FunnyName": str(funny or ""), "Tag": str(tag or ""),
+                "Batting": str(batting or ""), "Bowling": str(bowling or ""),
+                "Captain": str(captain or ""), "Keeper": str(keeper or ""),
+                "Overseas": is_overseas
             })
             seen_names.add(name.lower())
     
-    # Source 1: IPL_Players_Dataset.xlsx (primary, has funny names)
+    # Source 1: IPL_Players_Dataset.xlsx
     try:
         import openpyxl
         xlsx1 = os.path.join("src", "IPL_Players_Dataset.xlsx")
@@ -386,14 +391,17 @@ def load_data():
                     nickname=str(d.get("Nickname", "") or ""),
                     funny=str(d.get("Funny Name / Description", "") or ""),
                     tag=str(d.get("Special Tag", "") or ""),
+                    batting=str(d.get("Batting", "") or ""),
+                    bowling=str(d.get("Bowling", "") or ""),
+                    captain=str(d.get("Captain", "") or ""),
+                    keeper=str(d.get("Keeper", "") or ""),
+                    overseas=str(d.get("Overseas", "") or "")
                 )
             wb.close()
-    except Exception as e:
-        st.error(f"Dataset 1 error: {e}")
+    except Exception: pass
     
     # Source 2: all_ipl_players_200plus.xlsx
     try:
-        import openpyxl
         xlsx2 = os.path.join("src", "all_ipl_players_200plus.xlsx")
         if os.path.exists(xlsx2):
             wb = openpyxl.load_workbook(xlsx2, read_only=True)
@@ -407,26 +415,31 @@ def load_data():
                     team=str(d.get("Team", d.get("IPL Team", "")) or ""),
                     role=str(d.get("Role", "") or ""),
                     nationality=str(d.get("Nationality", "") or ""),
+                    batting=str(d.get("Batting", "") or ""),
+                    bowling=str(d.get("Bowling", "") or ""),
+                    overseas=str(d.get("Overseas", "") or "")
                 )
             wb.close()
-    except Exception as e:
-        st.error(f"Dataset 2 error: {e}")
+    except Exception: pass
     
-    # Source 3: CSV fallback
+    # Source 3: CSV fallback (Highest quality metadata)
     try:
         if os.path.exists("top_100_ipl_players.csv"):
             with open("top_100_ipl_players.csv", mode='r', encoding='utf-8') as f:
                 for row in csv.DictReader(f):
                     add_player(
                         name=row.get("Name", ""),
-                        team=row.get("Team", row.get("IPL Team", "")),
+                        team=row.get("IPL Team", row.get("Team", "")),
                         role=row.get("Role", ""),
                         nationality=row.get("Nationality", ""),
+                        batting=row.get("Batting", ""),
+                        bowling=row.get("Bowling", ""),
+                        captain=row.get("Captain", ""),
+                        keeper=row.get("Keeper", ""),
+                        overseas=row.get("Overseas", "")
                     )
-    except Exception:
-        pass
+    except Exception: pass
     
-    # Final enforcement of 170 players as requested
     return players[:170]
 
 # --- INITIALIZE SESSION STATE (always reload fresh data) ---
@@ -460,7 +473,7 @@ for key, default in [("history", []), ("count", 0), ("undo_stack", []), ("curren
         st.session_state[key] = default
 
 def call_ai(prompt, model_name=None):
-    current_key = st.session_state.get("api_key", os.getenv("GROQ_API_KEY", os.getenv("CEREBRAS_API_KEY", os.getenv("OPENAI_API_KEY", ""))))
+    current_key = st.session_state.get("api_key", os.getenv("GROQ_API_KEY", os.getenv("CEREBRAS_API_KEY", os.getenv("OPENAI_API_KEY", os.getenv("SAMBANOVA_API_KEY", os.getenv("GEMINI_API_KEY", ""))))))
     if not current_key: return None
 
     def clean_json(text):
@@ -469,36 +482,61 @@ def call_ai(prompt, model_name=None):
         elif "```" in text: text = text.split("```")[1].split("```")[0]
         return text.strip()
 
-    # 1. GROQ (ULTRA FAST & HIGH LIMITS)
+    # 1. CEREBRAS (THE LATENCY KING - ~1000 tokens/sec)
+    if current_key.startswith("csk-"):
+        try:
+            from cerebras.cloud.sdk import Cerebras
+            client = Cerebras(api_key=current_key)
+            response = client.chat.completions.create(
+                model="llama3.1-8b", 
+                messages=[{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            return json.loads(clean_json(response.choices[0].message.content))
+        except Exception: pass
+
+    # 2. GROQ (ULTRA FAST)
     if current_key.startswith("gsk_"):
         try:
             client = Groq(api_key=current_key)
             response = client.chat.completions.create(
                 model=model_name if model_name else "llama-3.1-8b-instant",
                 messages=[{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
-                temperature=0.0, max_tokens=300, response_format={"type": "json_object"}
+                temperature=0.0, max_tokens=1000, response_format={"type": "json_object"}
             )
             return json.loads(clean_json(response.choices[0].message.content))
-        except Exception as e:
-            st.session_state.last_error = f"Groq Error: {e}"
-            return None
+        except Exception: pass
 
-    # 2. CEREBRAS (ULTRA FAST)
-    if current_key.startswith("csk-"):
+    # 3. GEMINI (FASTEST FROM GOOGLE)
+    if current_key.startswith("AIza"):
         try:
-            from cerebras.cloud.sdk import Cerebras
-            client = Cerebras(api_key=current_key)
-            response = client.chat.completions.create(
-                model="llama3.1-70b",
-                messages=[{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
-                response_format={"type": "json_object"}
+            import google.generativeai as genai
+            genai.configure(api_key=current_key)
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            response = model.generate_content(
+                prompt,
+                generation_config={"response_mime_type": "application/json"}
             )
-            return json.loads(clean_json(response.choices[0].message.content))
-        except Exception as e:
-            st.session_state.last_error = f"Cerebras Error: {e}"
-            return None
+            return json.loads(clean_json(response.text))
+        except Exception: pass
 
-    # 3. OPENAI
+    # 4. SAMBANOVA / OPENROUTER (FALLBACK SPEED)
+    if len(current_key) > 30: 
+        try:
+            import requests
+            url = "https://api.sambanova.ai/v1/chat/completions" if not current_key.startswith("sk-or-") else "https://openrouter.ai/api/v1/chat/completions"
+            headers = {"Authorization": f"Bearer {current_key}", "Content-Type": "application/json"}
+            payload = {
+                "model": "Meta-Llama-3.1-8B-Instruct" if "sambanova" in url else "meta-llama/llama-3.1-8b-instruct",
+                "messages": [{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.0
+            }
+            res = requests.post(url, headers=headers, json=payload, timeout=12)
+            return json.loads(clean_json(res.json()['choices'][0]['message']['content']))
+        except Exception: pass
+
+    # 5. OPENAI / GENERIC
     if current_key.startswith("sk-"):
         try:
             import requests
@@ -508,11 +546,9 @@ def call_ai(prompt, model_name=None):
                 "messages": [{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
                 "response_format": {"type": "json_object"}
             }
-            res = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=20)
+            res = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=12)
             return json.loads(clean_json(res.json()['choices'][0]['message']['content']))
-        except Exception as e:
-            st.session_state.last_error = f"OpenAI Error: {e}"
-            return None
+        except Exception: pass
 
     return None
 
@@ -521,91 +557,105 @@ def get_next_question():
     if len(remaining) <= 1 or st.session_state.count >= 8:
         return make_guess()
 
-    # Compress data to avoid token limit errors
-    # EXTREME COMPRESSION: Reduces token usage by ~70%
-    def ultra_compress(p):
-        name = p['Name'][:12] # Truncate long names
-        team = p.get('Team','?')[:3].upper()
-        role = p.get('Role','?')[:2].upper()
-        nat = "IN" if "Indian" in p.get('Nationality','') else "OS"
-        return f"{name}[{team},{role},{nat}]"
+    # Phase 1: Local Statistical Filtering (FAST)
+    # Phase 2: Full Neural Filtering (ACCURATE)
+    use_local = len(remaining) > 12
 
-    pool_data = "|".join([f"{i}:{ultra_compress(p)}" for i, p in enumerate(remaining)])
+    stats = {
+        "Overseas": {"Yes": 0, "No": 0},
+        "Role": {},
+        "Team": {},
+        "Batting": {"Right": 0, "Left": 0},
+        "Captain": {"Yes": 0, "No": 0},
+        "Keeper": {"Yes": 0, "No": 0}
+    }
+    for p in remaining:
+        stats["Overseas"][p.get("Overseas", "No")] = stats["Overseas"].get(p.get("Overseas", "No"), 0) + 1
+        r = p.get("Role", "Unknown")
+        stats["Role"][r] = stats["Role"].get(r, 0) + 1
+        t = p.get("Team", "Unknown")
+        stats["Team"][t] = stats["Team"].get(t, 0) + 1
+        b = "Left" if "Left" in str(p.get("Batting", "")) else "Right"
+        stats["Batting"][b] += 1
+        stats["Captain"]["Yes" if "Yes" in str(p.get("Captain", "")) else "No"] += 1
+        stats["Keeper"]["Yes" if "Yes" in str(p.get("Keeper", "")) else "No"] += 1
+
     past_questions = [h['q'] for h in st.session_state.history]
-    history_str = ",".join([f"{h['q']}={h['a']}" for h in st.session_state.history])
-    
-    # Fix 1: Adaptive Decision Tree Strategy
     q_count = st.session_state.count + 1
-    remaining = st.session_state.remaining_players
-    
-    # Pre-check pool to see if focuses are already resolved
-    nationalities = set(p.get('Nationality','') for p in remaining)
-    roles = set(p.get('Role','') for p in remaining)
-    teams = set(p.get('Team','') for p in remaining)
-    
-    if q_count == 1 and len(nationalities) > 1: focus = "NATIONALITY (Indian vs Overseas)"
-    elif q_count <= 2 and len(roles) > 1: focus = "ROLE (Batsman, Bowler, Wicketkeeper, or All-rounder)"
-    elif q_count <= 3: focus = "BATTING HAND (Right-handed vs Left-handed)"
-    elif q_count <= 4 and len(teams) > 1: focus = "IPL TEAM (Current or primary team)"
-    elif q_count == 5: focus = "MAJOR ACHIEVEMENT (Orange/Purple cap, World Cup winner, etc.)"
-    else: focus = "ERA / UNIQUE STATS / SPECIFIC CAREER MILESTONES"
 
     with st.spinner(random.choice(LOADING_LINES)):
-        for attempt in range(5): # Reduced for speed
-            current_focus = focus if attempt < 2 else "ANY smart Yes/No cricket question"
-            
+        if use_local:
+            # Ask AI to pick the best CATEGORY and VALUE based on STATS
             prompt = f"""
-POOL: {pool_data}
-HISTORY: {history_str}
-BANNED: {past_questions}
-TURN: {q_count}
-FOCUS: {current_focus}
+STATS: {stats}
+HISTORY: {st.session_state.history}
+TURN: {q_count}/8
 
-TASK: Generate ONE Yes/No question in HINGLISH to split the POOL 50/50.
-1. Question must be in HINGLISH (Mix of Hindi and English).
-2. Example: "Kya wo player Overseas player hai?" or "Kya wo batsman Left-handed hai?"
-3. `yes_indices` = list of IDs from POOL for YES answers.
-4. Be witty and savage in `ai_personality_comment` (Hinglish).
+TASK: Pick the best attribute to split the pool 50/50.
+1. Return the `category` and `value` (e.g., "Team" and "CSK").
+2. Write a savage Hinglish `question` and `ai_personality_comment`.
+3. Valid Categories: Overseas, Role, Team, Batting, Captain, Keeper.
 
 JSON:
 {{
-  "thought": "Logic",
-  "question": "Hinglish Question",
-  "ai_personality_comment": "Witty roast",
-  "yes_indices": [IDs]
+  "category": "Role",
+  "value": "Bowler",
+  "question": "Kya wo player primarily ek Bowler hai?",
+  "ai_personality_comment": "Witty roast about bowling",
+  "thought": "Splitting pool by Role: Bowler"
 }}"""
-            res = call_ai(prompt)
-            if res:
-                q_text = res.get("question", "").strip()
-                q_text_lower = q_text.lower()
-                
-                # DUPLICATE CHECK
-                past_texts = [h['q'].lower().strip() for h in st.session_state.history]
-                if q_text_lower in past_texts:
-                    continue
-                
-                # SPLIT QUALITY CHECK
-                yes_indices = res.get("yes_indices", [])
-                yes_count = len(yes_indices)
-                pool_size = len(remaining)
-                
-                if yes_count == 0 or yes_count == pool_size:
-                    continue
-                
-                if attempt < 3 and q_count <= 4 and (yes_count < pool_size * 0.05 or yes_count > pool_size * 0.95):
-                    continue
-                    
-                banned = ["will ", "next match", "score a", "hit a", "century in", "tomorrow", "tonight"]
-                if any(b in q_text_lower for b in banned) or (len(remaining) > 5 and any(p['Name'].lower() in q_text_lower for p in remaining[:3])):
-                    continue
+        else:
+            # Full pool mode for final precision
+            pool_data = "|".join([f"{i}:{p['Name'][:10]}" for i, p in enumerate(remaining)])
+            prompt = f"""
+POOL: {pool_data}
+HISTORY: {st.session_state.history}
+TURN: {q_count}/8
 
-                st.session_state.current_q = res
+TASK: Generate a precise Yes/No question in HINGLISH.
+1. `yes_indices` MUST be exact IDs from POOL.
+2. Be savage in `ai_personality_comment`.
+
+JSON:
+{{
+  "question": "Hinglish question",
+  "ai_personality_comment": "Roast",
+  "yes_indices": [IDs],
+  "thought": "Logic"
+}}"""
+
+        res = call_ai(prompt)
+        if res:
+            if use_local:
+                cat = res.get("category")
+                val = res.get("value")
+                
+                # Calculate indices locally and instantly
+                yes_indices = []
+                for i, p in enumerate(remaining):
+                    match = False
+                    if cat == "Overseas": match = p.get("Overseas") == val
+                    elif cat == "Role": match = p.get("Role") == val
+                    elif cat == "Team": match = p.get("Team") == val
+                    elif cat == "Batting": match = (val in str(p.get("Batting", "")))
+                    elif cat == "Captain": match = ("Yes" in str(p.get("Captain", ""))) if val == "Yes" else ("Yes" not in str(p.get("Captain", "")))
+                    elif cat == "Keeper": match = ("Yes" in str(p.get("Keeper", ""))) if val == "Yes" else ("Yes" not in str(p.get("Keeper", "")))
+                    
+                    if match: yes_indices.append(i)
+                
+                res["yes_indices"] = yes_indices
+            
+            # Final safety check
+            if not res.get("yes_indices") and not use_local:
+                st.session_state.last_error = "Neural Bridge jammed."
                 st.rerun()
+
+            st.session_state.current_q = res
+            st.rerun()
         else:
             st.session_state.game_state = "error"
-            # If we have a specific API error, keep it. Otherwise use the generic one.
-            if not st.session_state.get("last_error"):
-                st.session_state.last_error = "Neural Bridge is jammed. The pool might be too small or the logic is conflicting. Try refreshing!"
+            st.session_state.last_error = "Neural Bridge is jammed. Try refreshing."
+            st.rerun()
 
 def make_guess():
     remaining = st.session_state.remaining_players
