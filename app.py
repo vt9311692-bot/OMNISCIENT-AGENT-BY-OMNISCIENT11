@@ -474,7 +474,7 @@ def call_ai(prompt, model_name=None):
         try:
             client = Groq(api_key=current_key)
             response = client.chat.completions.create(
-                model=model_name if model_name else "llama-3.3-8b-instant",
+                model=model_name if model_name else "llama-3.1-8b-instant",
                 messages=[{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
                 temperature=0.0, max_tokens=300, response_format={"type": "json_object"}
             )
