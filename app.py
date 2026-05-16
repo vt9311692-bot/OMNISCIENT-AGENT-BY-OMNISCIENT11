@@ -20,14 +20,10 @@ from dotenv import load_dotenv
 load_dotenv()
 def save_key_to_env(key):
     # Clear all potential keys from current environment first
-    for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY"]:
+    for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "SAMBANOVA_API_KEY", "OPENAI_API_KEY"]:
         if k in os.environ: del os.environ[k]
         
-    # Detect key type
-    if key.startswith("AIza"): key_name = "GEMINI_API_KEY"
-    elif key.startswith("csk-"): key_name = "CEREBRAS_API_KEY"
-    elif key.startswith("sk-or-"): key_name = "OPENROUTER_API_KEY"
-    else: key_name = "GROQ_API_KEY"
+    key_name = "OPENAI_API_KEY"
     
     with open(".env", "w") as f:
         f.write(f"{key_name}={key}\n")
@@ -462,7 +458,7 @@ for key, default in [("history", []), ("count", 0), ("undo_stack", []), ("curren
 
 # --- AI LOGIC ---
 def call_ai(prompt, model_name=None):
-    current_key = st.session_state.get("api_key", os.getenv("CEREBRAS_API_KEY", os.getenv("GEMINI_API_KEY", os.getenv("GROQ_API_KEY", ""))))
+    current_key = st.session_state.get("api_key", os.getenv("OPENAI_API_KEY", ""))
     if not current_key: return None
 
     def clean_json(text):
@@ -471,78 +467,38 @@ def call_ai(prompt, model_name=None):
         elif "```" in text: text = text.split("```")[1].split("```")[0]
         return text.strip()
 
-    # 1. Cerebras
-    if current_key.startswith("csk-"):
-        try:
-            client = Cerebras(api_key=current_key)
-            response = client.chat.completions.create(
-                model="llama3.1-8b",
-                messages=[{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
-                max_tokens=600,
-                response_format={"type": "json_object"}
-            )
-            return json.loads(clean_json(response.choices[0].message.content))
-        except Exception as e:
-            st.session_state.last_error = f"Cerebras Error: {e}"
+    # OpenAI (Exclusive)
+    try:
+        import requests
+        headers = {
+            "Authorization": f"Bearer {current_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": model_name if model_name else "gpt-4o", # Using GPT-4o as default for high accuracy
+            "messages": [
+                {"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.0,
+            "response_format": {"type": "json_object"}
+        }
+        res = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=30)
+        
+        if res.status_code != 200:
+            st.session_state.last_error = f"OpenAI API Error ({res.status_code}): {res.text}"
             return None
-
-    # 2. Gemini
-    if current_key.startswith("AIza"):
-        try:
-            genai.configure(api_key=current_key)
-            model = genai.GenerativeModel("gemini-1.5-flash-latest")
-            response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json", "max_output_tokens": 600})
-            return json.loads(clean_json(response.text))
-        except Exception as e:
-            st.session_state.last_error = f"Gemini Error: {e}"
+        
+        data = res.json()
+        if 'choices' not in data or not data['choices']:
+            st.session_state.last_error = f"OpenAI Unexpected Response: {data}"
             return None
-
-    # 3. Groq
-    if current_key.startswith("gsk"):
-        try:
-            client = Groq(api_key=current_key)
-            response = client.chat.completions.create(
-                model=model_name if model_name else "llama-3.1-8b-instant",
-                messages=[{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
-                temperature=0.0, max_tokens=600, response_format={"type": "json_object"}
-            )
-            return json.loads(clean_json(response.choices[0].message.content))
-        except Exception as e:
-            st.session_state.last_error = f"Groq Error: {e}"
-            return None
-
-    # 4. OpenRouter
-    if current_key.startswith("sk-or-"):
-        try:
-            import requests
-            headers = {
-                "Authorization": f"Bearer {current_key}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://github.com/omniscient-agent", # Optional, for OpenRouter rankings
-                "X-Title": "Omniscient Agent"
-            }
-            payload = {
-                "model": model_name if model_name else "google/gemini-flash-1.5",
-                "messages": [{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
-                "temperature": 0.0, "max_tokens": 1200, "response_format": {"type": "json_object"}
-            }
-            res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=30)
-            if res.status_code != 200:
-                st.session_state.last_error = f"OpenRouter API Error ({res.status_code}): {res.text}"
-                return None
             
-            data = res.json()
-            if 'choices' not in data or not data['choices']:
-                st.session_state.last_error = f"OpenRouter Unexpected Response: {data}"
-                return None
-                
-            content = data['choices'][0]['message']['content']
-            return json.loads(clean_json(content))
-        except Exception as e:
-            st.session_state.last_error = f"OpenRouter Exception: {e}"
-            return None
-
-    return None
+        content = data['choices'][0]['message']['content']
+        return json.loads(clean_json(content))
+    except Exception as e:
+        st.session_state.last_error = f"OpenAI Exception: {e}"
+        return None
 
 def get_next_question():
     remaining = st.session_state.remaining_players
@@ -550,13 +506,11 @@ def get_next_question():
         return make_guess()
 
     # Compress data to avoid token limit errors
-    def compress(p):
-        t = p.get('Team','?')[:3].upper()
-        r = p.get('Role','?')
-        n = p.get('Nationality','?')
-        return f"{p['Name']}[{t},{r},{n}]"
-        
-    pool_data = "|".join([f"{i}:{compress(p)}" for i, p in enumerate(remaining)])
+    # Use structured JSON for the pool to help DeepSeek-V3.2 reason better
+    pool_data = json.dumps([
+        {"id": i, "name": p['Name'], "team": p.get('Team','?'), "role": p.get('Role','?'), "nat": p.get('Nationality','?')} 
+        for i, p in enumerate(remaining)
+    ])
     past_questions = [h['q'] for h in st.session_state.history]
     history_str = ",".join([f"{h['q']}={h['a']}" for h in st.session_state.history])
     
@@ -591,16 +545,17 @@ SUGGESTED FOCUS: {current_focus}
 TASK: Generate ONE high-quality Yes/No factual question to split the POOL as close to 50/50 as possible.
 STRICT RULES:
 1. FOCUS: {current_focus}.
-2. Use the POOL metadata (Team, Role, Nationality) to ensure `yes_indices` are 100% accurate.
+2. Use the POOL metadata (team, role, nat) to ensure `yes_indices` are 100% accurate.
 3. NEVER ask a question from the BANNED list.
-4. Character: Savage Hinglish humor in `ai_personality_comment`.
+4. `yes_indices` MUST contain the "id" numbers of ALL players in the POOL for whom the answer is YES.
+5. Character: Savage Hinglish humor in `ai_personality_comment`.
 
-JSON OUTPUT:
+JSON OUTPUT (NO EXTRA TEXT):
 {{
-  "thought": "Logic for this split and why it's accurate",
+  "thought": "Logic for this split",
   "question": "The English question",
   "ai_personality_comment": "Witty Hinglish roast",
-  "yes_indices": [List of indices from POOL where the answer is YES]
+  "yes_indices": [List of "id" integers from the POOL JSON]
 }}"""
             res = call_ai(prompt)
             if res:
@@ -633,7 +588,9 @@ JSON OUTPUT:
                 st.rerun()
         else:
             st.session_state.game_state = "error"
-            st.session_state.last_error = "Neural Bridge is jammed. The pool might be too small or the logic is conflicting. Try refreshing!"
+            # If we have a specific API error, keep it. Otherwise use the generic one.
+            if not st.session_state.get("last_error"):
+                st.session_state.last_error = "Neural Bridge is jammed. The pool might be too small or the logic is conflicting. Try refreshing!"
 
 def make_guess():
     remaining = st.session_state.remaining_players
@@ -681,7 +638,7 @@ JSON OUTPUT (MANDATORY):
     
     with st.spinner("Locking in final answer... 🔒"):
         # Use llama-3.1-8b-instant for the final guess to save cost and increase speed
-        res = call_ai(prompt, model_name="llama-3.1-8b-instant")
+        res = call_ai(prompt) # Let provider-specific logic choose the best model
         if res:
             st.session_state.final_guess = res
             st.session_state.game_state = "result"
@@ -697,21 +654,17 @@ with st.sidebar:
     if st.button("🔑 Change API Key"):
         if os.path.exists(".env"):
             os.remove(".env")
-        # Deep clear all potential keys
-        for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY"]:
+        for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "SAMBANOVA_API_KEY", "OPENAI_API_KEY"]:
             if k in os.environ: del os.environ[k]
         if "api_key" in st.session_state:
             del st.session_state["api_key"]
         st.session_state.game_state = "start"
         st.rerun()
-    st.markdown("### 💡 API Key Help")
     st.info("""
-    **Ultra-Reliable Mode:**
-    Use an **OpenRouter Key** to try the surgical **Gemini Flash 1.5**!
+    **Premium OpenAI Mode:**
+    Using **GPT-4o** for the most accurate mind-reading experience!
     """)
-    st.markdown("[Get OpenRouter Key](https://openrouter.ai/keys)")
-    st.markdown("[Get Groq Key](https://console.groq.com/keys)")
-    st.markdown("[Get Gemini Key](https://aistudio.google.com/app/apikey)")
+    st.markdown("[Get OpenAI Key](https://platform.openai.com/api-keys)")
     
 # --- HINGLISH SLOGANS & WELCOME ---
 WELCOME_LINES = [
@@ -733,11 +686,7 @@ if st.session_state.game_state == "start":
         st.write("Think of any IPL player (Past or Present) and I will identify them in just 8 questions!")
         
         if env_key:
-            if env_key.startswith("sk-or-"): provider = "OpenRouter (Gemini Flash 1.5)"
-            elif env_key.startswith("csk-"): provider = "Cerebras"
-            elif env_key.startswith("AIza"): provider = "Gemini"
-            else: provider = "Groq"
-            
+            provider = "OpenAI (GPT-4o)"
             st.success(f"✅ Active Provider: **{provider}**")
             
             c1, c2 = st.columns(2)
@@ -749,14 +698,14 @@ if st.session_state.game_state == "start":
             with c2:
                 if st.button("🔑 Chabi Badlo", use_container_width=True):
                     if os.path.exists(".env"): os.remove(".env")
-                    for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY"]:
+                    for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "SAMBANOVA_API_KEY", "OPENAI_API_KEY"]:
                         if k in os.environ: del os.environ[k]
                     if "api_key" in st.session_state: del st.session_state["api_key"]
                     st.session_state.game_state = "start"
                     st.rerun()
         else:
             st.info("Bhai pehle apni API key daalo connection banane ke liye!")
-            api_key_input = st.text_input("🔑 API Key Daalo", type="password", placeholder="OpenRouter (sk-or-...), Groq, Gemini, ya Cerebras key...")
+            api_key_input = st.text_input("🔑 OpenAI API Key", type="password", placeholder="sk-...")
             
             col1, col2 = st.columns(2)
             with col1:
@@ -910,19 +859,16 @@ elif st.session_state.game_state == "error":
     with st.container():
         st.markdown("<div class='glass-card'></div>", unsafe_allow_html=True)
         st.error(f"🚨 AGENT ERROR: {st.session_state.get('last_error', 'Unknown breakdown')}")
-        st.write("Cerebras, Gemini, or Groq might be hitting rate limits. Wait 10-15 seconds and try again.")
-        if st.button("🔄 Retry Connection", type="primary", use_container_width=True):
+        st.info("💡 **Possible Fixes:**\n1. Wait 10s and retry (Rate limits).\n2. Refresh the page.\n3. Check if your API Key is valid and has credits.")
+        
+        if st.button("🔄 Retry Neural Link", type="primary", use_container_width=True):
             st.session_state.game_state = "playing"
             st.session_state.current_q = None
             st.rerun()
-        if st.button("🏠 Back to Start"):
-            st.session_state.game_state = "start"
-            st.rerun()
-        
-        st.markdown("---")
+            
         if st.button("🔑 Change API Key", use_container_width=True):
             if os.path.exists(".env"): os.remove(".env")
-            for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY"]:
+            for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "SAMBANOVA_API_KEY", "OPENAI_API_KEY"]:
                 if k in os.environ: del os.environ[k]
             if "api_key" in st.session_state: del st.session_state["api_key"]
             st.session_state.game_state = "start"
