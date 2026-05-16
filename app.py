@@ -19,11 +19,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 def save_key_to_env(key):
-    # Clear all potential keys from current environment first
-    for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "SAMBANOVA_API_KEY", "OPENAI_API_KEY"]:
+    # Clear all potential keys
+    for k in ["GEMINI_API_KEY", "CEREBRAS_API_KEY", "GROQ_API_KEY", "OPENAI_API_KEY", "SAMBANOVA_API_KEY"]:
         if k in os.environ: del os.environ[k]
-        
-    key_name = "OPENAI_API_KEY"
+    
+    if key.startswith("gsk_"): key_name = "GROQ_API_KEY"
+    elif key.startswith("csk-"): key_name = "CEREBRAS_API_KEY"
+    elif key.startswith("sk-"): key_name = "OPENAI_API_KEY"
+    else: key_name = "GROQ_API_KEY" # Fallback to Groq
     
     with open(".env", "w") as f:
         f.write(f"{key_name}={key}\n")
@@ -456,9 +459,8 @@ for key, default in [("history", []), ("count", 0), ("undo_stack", []), ("curren
     if key not in st.session_state:
         st.session_state[key] = default
 
-# --- AI LOGIC ---
 def call_ai(prompt, model_name=None):
-    current_key = st.session_state.get("api_key", os.getenv("OPENAI_API_KEY", ""))
+    current_key = st.session_state.get("api_key", os.getenv("GROQ_API_KEY", os.getenv("CEREBRAS_API_KEY", os.getenv("OPENAI_API_KEY", ""))))
     if not current_key: return None
 
     def clean_json(text):
@@ -467,38 +469,52 @@ def call_ai(prompt, model_name=None):
         elif "```" in text: text = text.split("```")[1].split("```")[0]
         return text.strip()
 
-    # OpenAI (Exclusive)
-    try:
-        import requests
-        headers = {
-            "Authorization": f"Bearer {current_key}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "model": model_name if model_name else "gpt-4o", # Using GPT-4o as default for high accuracy
-            "messages": [
-                {"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.0,
-            "response_format": {"type": "json_object"}
-        }
-        res = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=30)
-        
-        if res.status_code != 200:
-            st.session_state.last_error = f"OpenAI API Error ({res.status_code}): {res.text}"
+    # 1. GROQ (FAST & FREE)
+    if current_key.startswith("gsk_"):
+        try:
+            client = Groq(api_key=current_key)
+            response = client.chat.completions.create(
+                model=model_name if model_name else "llama-3.1-70b-versatile",
+                messages=[{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
+                temperature=0.0, response_format={"type": "json_object"}
+            )
+            return json.loads(clean_json(response.choices[0].message.content))
+        except Exception as e:
+            st.session_state.last_error = f"Groq Error: {e}"
             return None
-        
-        data = res.json()
-        if 'choices' not in data or not data['choices']:
-            st.session_state.last_error = f"OpenAI Unexpected Response: {data}"
+
+    # 2. CEREBRAS (ULTRA FAST)
+    if current_key.startswith("csk-"):
+        try:
+            from cerebras.cloud.sdk import Cerebras
+            client = Cerebras(api_key=current_key)
+            response = client.chat.completions.create(
+                model="llama3.1-70b",
+                messages=[{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            return json.loads(clean_json(response.choices[0].message.content))
+        except Exception as e:
+            st.session_state.last_error = f"Cerebras Error: {e}"
             return None
-            
-        content = data['choices'][0]['message']['content']
-        return json.loads(clean_json(content))
-    except Exception as e:
-        st.session_state.last_error = f"OpenAI Exception: {e}"
-        return None
+
+    # 3. OPENAI
+    if current_key.startswith("sk-"):
+        try:
+            import requests
+            headers = {"Authorization": f"Bearer {current_key}", "Content-Type": "application/json"}
+            payload = {
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "system", "content": "You are OMNISCIENT AGENT. MISSION: Factual JSON only."}, {"role": "user", "content": prompt}],
+                "response_format": {"type": "json_object"}
+            }
+            res = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=20)
+            return json.loads(clean_json(res.json()['choices'][0]['message']['content']))
+        except Exception as e:
+            st.session_state.last_error = f"OpenAI Error: {e}"
+            return None
+
+    return None
 
 def get_next_question():
     remaining = st.session_state.remaining_players
@@ -686,7 +702,9 @@ if st.session_state.game_state == "start":
         st.write("Think of any IPL player (Past or Present) and I will identify them in just 8 questions!")
         
         if env_key:
-            provider = "OpenAI (GPT-4o)"
+            if env_key.startswith("gsk"): provider = "Groq (Lightning Fast)"
+            elif env_key.startswith("csk"): provider = "Cerebras (Atomic Speed)"
+            else: provider = "OpenAI (Premium)"
             st.success(f"✅ Active Provider: **{provider}**")
             
             c1, c2 = st.columns(2)
@@ -705,7 +723,7 @@ if st.session_state.game_state == "start":
                     st.rerun()
         else:
             st.info("Bhai pehle apni API key daalo connection banane ke liye!")
-            api_key_input = st.text_input("🔑 OpenAI API Key", type="password", placeholder="sk-...")
+            api_key_input = st.text_input("🔑 API Key Daalo", type="password", placeholder="Groq (gsk_...), Cerebras (csk-), or OpenAI key...")
             
             col1, col2 = st.columns(2)
             with col1:
