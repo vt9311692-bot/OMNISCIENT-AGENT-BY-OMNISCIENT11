@@ -584,33 +584,25 @@ def get_next_question():
     q_count = st.session_state.count + 1
 
     with st.spinner(random.choice(LOADING_LINES)):
-        # Triple-Lock: Track used logic, categories, and values to prevent any repetition
+        # Triple-Lock: Track used logic, categories, and values
         used_logic = [f"{h.get('cat')}:{h.get('val')}" for h in st.session_state.history if 'cat' in h]
         used_cats = [str(h.get('cat')) for h in st.session_state.history if 'cat' in h]
         
-        for attempt in range(3):
+        for attempt in range(5): # Increased to 5 for stability
             if use_local:
                 prompt = f"""
 STATS: {stats}
 BANNED_LOGIC: {used_logic}
 BANNED_CATEGORIES: {used_cats}
 TURN: {q_count}/8
-
 TASK: Pick a CATEGORY and VALUE to split the pool 50/50. 
-CRITICAL RULES:
-1. DO NOT repeat any category from {used_cats}.
-2. DO NOT repeat any logic from {used_logic}.
-3. If you repeat, the neural link breaks. MOVE TO A NEW TRAIT (e.g., if you asked Team, ask Role now).
-4. Question must be in HINGLISH.
-
 JSON: {{"category": "...", "value": "...", "question": "Hinglish question", "ai_personality_comment": "Roast"}}"""
             else:
                 pool_data = "|".join([f"{i}:{p['Name'][:10]}" for i, p in enumerate(remaining)])
                 prompt = f"""
 POOL: {pool_data}
 HISTORY: {st.session_state.history}
-TURN: {q_count}/8
-TASK: YES/NO question. Be witty. No repeats.
+TASK: Unique YES/NO question. No repeats.
 JSON: {{"question": "...", "ai_personality_comment": "...", "yes_indices": [IDs]}}"""
 
             res = call_ai(prompt)
@@ -619,37 +611,50 @@ JSON: {{"question": "...", "ai_personality_comment": "...", "yes_indices": [IDs]
                 cat = res.get("category")
                 val = res.get("value")
                 
-                # MULTI-LAYER DUPLICATE CHECK
+                # Check for duplicates (Relaxed on last attempt)
                 is_dup = any(h['q'].lower().strip() == q_text.lower().strip() for h in st.session_state.history)
-                if use_local and f"{cat}:{val}" in used_logic: is_dup = True
+                if attempt < 4 and use_local and f"{cat}:{val}" in used_logic: is_dup = True
                 
                 if is_dup: continue
 
                 if use_local:
-                    yes_indices = []
-                    for i, p in enumerate(remaining):
-                        match = False
-                        if cat == "Overseas": match = p.get("Overseas") == val
-                        elif cat == "Role": match = p.get("Role") == val
-                        elif cat == "Team": match = p.get("Team") == val
-                        elif cat == "Batting": match = (val in str(p.get("Batting", "")))
-                        elif cat == "Captain": match = ("Yes" in str(p.get("Captain", ""))) if val == "Yes" else ("Yes" not in str(p.get("Captain", "")))
-                        elif cat == "Keeper": match = ("Yes" in str(p.get("Keeper", ""))) if val == "Yes" else ("Yes" not in str(p.get("Keeper", "")))
-                        if match: yes_indices.append(i)
+                    yes_indices = [i for i, p in enumerate(remaining) if (
+                        (cat == "Overseas" and p.get("Overseas") == val) or
+                        (cat == "Role" and p.get("Role") == val) or
+                        (cat == "Team" and p.get("Team") == val) or
+                        (cat == "Batting" and val in str(p.get("Batting", ""))) or
+                        (cat == "Captain" and (("Yes" in str(p.get("Captain", ""))) if val == "Yes" else ("Yes" not in str(p.get("Captain", ""))))) or
+                        (cat == "Keeper" and (("Yes" in str(p.get("Keeper", ""))) if val == "Yes" else ("Yes" not in str(p.get("Keeper", "")))))
+                    )]
                     
                     if not yes_indices or len(yes_indices) == len(remaining): continue
                     res["yes_indices"] = yes_indices
-                    # Store logic for history
-                    res["cat"] = cat
-                    res["val"] = val
+                    res["cat"], res["val"] = cat, val
                 
                 if not res.get("yes_indices") and not use_local: continue
                 
                 st.session_state.current_q = res
                 st.rerun()
         else:
+            # EMERGENCY FALLBACK: Pick a category that hasn't been used much
+            for cat in ["Role", "Team", "Overseas", "Batting"]:
+                if cat not in used_cats:
+                    # Pick the first available value in this category
+                    vals = [p.get(cat) for p in remaining if p.get(cat)]
+                    if vals:
+                        val = vals[0]
+                        yes_indices = [i for i, p in enumerate(remaining) if p.get(cat) == val]
+                        if 0 < len(yes_indices) < len(remaining):
+                            st.session_state.current_q = {
+                                "question": f"Kya wo player primarily {val} hai?",
+                                "ai_personality_comment": "Bhai, neural network overload ho raha tha, toh seedha sawaal pooch raha hoon! 😎",
+                                "yes_indices": yes_indices,
+                                "cat": cat, "val": val
+                            }
+                            st.rerun()
+            
             st.session_state.game_state = "error"
-            st.session_state.last_error = "Bhai, dimag hang ho gaya! Pool too complex. Restarting link..."
+            st.session_state.last_error = "Neural Bridge is jammed. Please refresh and try a different player!"
             st.rerun()
 
 def make_guess():
