@@ -642,17 +642,36 @@ JSON: {{"question": "...", "ai_personality_comment": "...", "yes_indices": [IDs]
                 st.rerun()
         else:
             # EMERGENCY FALLBACK: Pick a category that hasn't been used much
-            for cat in ["Role", "Team", "Overseas", "Batting"]:
+            templates = {
+                "Role": "primarily ek {} hai?",
+                "Team": "{} ke liye khelta hai?",
+                "Overseas": "ek Overseas player hai?",
+                "Batting": "ek {} batsman hai?",
+                "Captain": "apni team ka Captain hai?",
+                "Keeper": "ek Wicket-keeper hai?"
+            }
+            for cat, temp in templates.items():
                 if cat not in used_cats:
-                    # Pick the first available value in this category
                     vals = [p.get(cat) for p in remaining if p.get(cat)]
                     if vals:
                         val = vals[0]
-                        yes_indices = [i for i, p in enumerate(remaining) if p.get(cat) == val]
+                        # Special handling for boolean-style values
+                        q_text = f"Kya wo player {temp.format(val)}" if "{}" in temp else f"Kya wo player {temp}"
+                        if cat == "Overseas" and val == "No": continue # Skip Indian fallback
+                        
+                        yes_indices = [i for i, p in enumerate(remaining) if (
+                            (cat == "Overseas" and p.get("Overseas") == val) or
+                            (cat == "Role" and p.get("Role") == val) or
+                            (cat == "Team" and p.get("Team") == val) or
+                            (cat == "Batting" and val in str(p.get("Batting", ""))) or
+                            (cat == "Captain" and (("Yes" in str(p.get("Captain", ""))) if val == "Yes" else ("Yes" not in str(p.get("Captain", ""))))) or
+                            (cat == "Keeper" and (("Yes" in str(p.get("Keeper", ""))) if val == "Yes" else ("Yes" not in str(p.get("Keeper", "")))))
+                        )]
+                        
                         if 0 < len(yes_indices) < len(remaining):
                             st.session_state.current_q = {
-                                "question": f"Kya wo player primarily {val} hai?",
-                                "ai_personality_comment": "Bhai, neural network overload ho raha tha, toh seedha sawaal pooch raha hoon! 😎",
+                                "question": q_text,
+                                "ai_personality_comment": "Neural link stable, just keeping it simple! 😎",
                                 "yes_indices": yes_indices,
                                 "cat": cat, "val": val
                             }
