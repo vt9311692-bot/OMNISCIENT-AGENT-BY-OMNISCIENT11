@@ -360,7 +360,7 @@ def load_data():
     players = []
     seen_names = set()
     
-    def add_player(name, team="", role="", nationality="", nickname="", funny="", tag="", batting="", bowling="", captain="", keeper="", overseas=""):
+    def add_player(name, team="", role="", nationality="", nickname="", funny="", tag="", batting="", bowling="", captain="", keeper="", overseas="", image_url=""):
         name = name.strip()
         if name and name.lower() not in seen_names:
             # Normalize attributes for logic
@@ -371,7 +371,7 @@ def load_data():
                 "FunnyName": str(funny or ""), "Tag": str(tag or ""),
                 "Batting": str(batting or ""), "Bowling": str(bowling or ""),
                 "Captain": str(captain or ""), "Keeper": str(keeper or ""),
-                "Overseas": is_overseas
+                "Overseas": is_overseas, "Image_URL": str(image_url or "")
             })
             seen_names.add(name.lower())
     
@@ -397,7 +397,8 @@ def load_data():
                     bowling=str(d.get("Bowling", "") or ""),
                     captain=str(d.get("Captain", "") or ""),
                     keeper=str(d.get("Keeper", "") or ""),
-                    overseas=str(d.get("Overseas", "") or "")
+                    overseas=str(d.get("Overseas", "") or ""),
+                    image_url=str(d.get("Image_URL", "") or "")
                 )
             wb.close()
     except Exception: pass
@@ -419,7 +420,8 @@ def load_data():
                     nationality=str(d.get("Nationality", "") or ""),
                     batting=str(d.get("Batting", "") or ""),
                     bowling=str(d.get("Bowling", "") or ""),
-                    overseas=str(d.get("Overseas", "") or "")
+                    overseas=str(d.get("Overseas", "") or ""),
+                    image_url=str(d.get("Image_URL", "") or "")
                 )
             wb.close()
     except Exception: pass
@@ -438,7 +440,8 @@ def load_data():
                         bowling=row.get("Bowling", ""),
                         captain=row.get("Captain", ""),
                         keeper=row.get("Keeper", ""),
-                        overseas=row.get("Overseas", "")
+                        overseas=row.get("Overseas", ""),
+                        image_url=row.get("Image_URL", "")
                     )
     except Exception: pass
     
@@ -551,6 +554,12 @@ def call_ai(prompt, model_name=None):
     return None
 
 def get_player_image_url(player_name):
+    # First, check if we have a direct Image_URL in the loaded dataset
+    if "all_players" in st.session_state:
+        matched = next((p for p in st.session_state.all_players if p['Name'].lower() == player_name.strip().lower()), None)
+        if matched and matched.get("Image_URL"):
+            return matched["Image_URL"]
+
     headers = {"User-Agent": "OmniscientAgent/1.0 (contact@example.com)"}
     try:
         search_query = urllib.parse.quote(player_name.strip())
@@ -568,9 +577,21 @@ def get_player_image_url(player_name):
     try:
         from duckduckgo_search import DDGS
         with DDGS() as ddgs:
-            results = ddgs.images(f"{player_name} ipl cricket", max_results=1)
+            results = list(ddgs.images(f"{player_name} ipl cricket", max_results=1))
             if results and len(results) > 0:
                 return results[0]['image']
+    except Exception:
+        pass
+        
+    # SUPER FALLBACK: Bing Image Search Scraper
+    try:
+        bing_url = f"https://www.bing.com/images/search?q={urllib.parse.quote(player_name + ' ipl profile')}"
+        headers_bing = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        html = requests.get(bing_url, headers=headers_bing, timeout=5).text
+        import re
+        match = re.search(r'murl&quot;:&quot;(https://[^&]+?\.(?:jpg|png|jpeg))&quot;', html, re.IGNORECASE)
+        if match:
+            return match.group(1)
     except Exception:
         pass
 
@@ -731,6 +752,46 @@ JSON: {{"q": "Kya...", "msg": "...", "reasoning": "Explain step by step which ID
             st.session_state.game_state = "error"
             st.session_state.last_error = "Neural Bridge is jammed. Please refresh and try a different player!"
             st.rerun()
+
+def display_player_image_reveal(player_data: dict) -> None:
+    """
+    Display player image with stats after final guess.
+    """
+    st.markdown("---")
+    st.markdown("<div class='sahi-pakde'>🎯 SAHI PAKDE HAI! 🎯</div>", 
+                unsafe_allow_html=True)
+    
+    col_img, col_info = st.columns([1.2, 1])
+    
+    # ===== IMAGE COLUMN =====
+    with col_img:
+        image_url = player_data.get("Image_URL")
+        player_name = player_data.get("Name", "Unknown")
+        
+        if image_url:
+            try:
+                st.image(image_url, width=300, caption=player_name)
+            except Exception as e:
+                st.warning(f"📸 Image failed to load: {player_name}\n{str(e)}")
+                st.info("URL might be invalid or image deleted")
+        else:
+            st.info(f"📸 No image available for {player_name}")
+    
+    # ===== INFO COLUMN =====
+    with col_info:
+        team = player_data.get("Team", "Unknown")
+        role = player_data.get("Role", "Unknown")
+        overseas = player_data.get("Overseas", "Unknown")
+        
+        st.markdown(f"""
+        <div style='padding: 20px; background: rgba(252, 60, 68, 0.15); 
+                    border-left: 4px solid #fc3c44; border-radius: 8px;'>
+            <h2 style='color: #fc3c44; margin: 0;'>{player_name}</h2>
+            <p style='margin: 8px 0;'><strong>🏏 Team:</strong> {team}</p>
+            <p style='margin: 8px 0;'><strong>👤 Role:</strong> {role}</p>
+            <p style='margin: 8px 0;'><strong>🌍 Origin:</strong> {'Overseas' if overseas == 'Yes' else 'Domestic'}</p>
+        </div>
+        """, unsafe_allow_html=True)
 
 def make_guess():
     remaining = st.session_state.remaining_players
@@ -957,25 +1018,27 @@ elif st.session_state.game_state == "result":
         st.markdown("<div class='glass-card'></div>", unsafe_allow_html=True)
         
         # THE BIG REVEAL
-        st.markdown("<div class='sahi-pakde'>🎯 SAHI PAKDE HAI! 🎯</div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='result-name'>{guess_name}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='result-name'>{res.get('guess', guess_name)}</div>", unsafe_allow_html=True)
         
-        # --- NEW CODE: FETCH AND DISPLAY IMAGE ---
+        # ===== ADD THIS PART =====
+        # Find the player data
+        player_data = next(
+            (p for p in st.session_state.all_players if p["Name"] == res.get("guess", guess_name)),
+            None
+        )
+        
+        if not player_data:
+            player_data = {"Name": res.get("guess", guess_name), "Team": "Unknown", "Role": "Unknown", "Overseas": "Unknown"}
+            
         with st.spinner("Fetching player profile picture..."):
-            image_url = get_player_image_url(guess_name)
-        
-        # Centered visual frame layout for the player picture
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            st.markdown(f"<div style='display: flex; flex-direction: column; align-items: center; justify-content: center; margin-bottom: 10px;'><img src='{image_url}' style='border-radius: 50%; width: 200px; height: 200px; object-fit: cover; border: 4px solid #fc3c44; box-shadow: 0 0 20px rgba(252,60,68,0.5);'><p style='color: #a0a0a0; font-size: 0.9rem; margin-top: 10px;'>Profile Card: {guess_name}</p></div>", unsafe_allow_html=True)
-        # ----------------------------------------
-        
-        # Render player sub-details/badges from dataset
-        matched_profile = next((p for p in st.session_state.all_players if p['Name'].lower() == guess_name.lower()), None)
-        if matched_profile:
-            team = matched_profile.get('Team', '')
-            role = matched_profile.get('Role', '')
-            st.markdown(f"<div style='text-align: center; margin-bottom: 20px;'><span class='result-badge'>🏏 {team}</span> &nbsp; <span class='result-badge'>⚡ {role}</span></div>", unsafe_allow_html=True)
+            player_data["Image_URL"] = get_player_image_url(res.get("guess", guess_name))
+            
+        # Display image if player found
+        if player_data:
+            display_player_image_reveal(player_data)
+            
+        st.markdown("---")
+        # ===== END OF NEW PART =====
         
         # Celebration line from AI
         st.markdown(f"<div class='ai-bubble'>🎉 {celebration}</div>", unsafe_allow_html=True)
