@@ -938,11 +938,24 @@ elif st.session_state.game_state == "playing":
         with st.container():
             st.markdown("<div class='glass-card'></div>", unsafe_allow_html=True)
             
-            col_a, col_b = st.columns([1,1])
+            col_a, col_b, col_c = st.columns([1,1,1.2])
             with col_a:
                 st.markdown(f"<div><span class='probe-label'>SAWAAL</span><br><span class='probe-count'>{st.session_state.count + 1} / 12</span></div>", unsafe_allow_html=True)
             with col_b:
-                st.markdown(f"<div style='text-align:right'><span class='probe-label'>CANDIDATES</span><br><span class='candidates-count'>{len(st.session_state.remaining_players)}</span></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='text-align:center'><span class='probe-label'>CANDIDATES</span><br><span class='candidates-count'>{len(st.session_state.remaining_players)}</span></div>", unsafe_allow_html=True)
+            with col_c:
+                total_p = len(st.session_state.all_players) if "all_players" in st.session_state and st.session_state.all_players else 300
+                rem_p = len(st.session_state.remaining_players)
+                # Custom confidence curve for dramatic effect
+                if rem_p <= 1: conf = 99
+                elif rem_p <= 3: conf = 92
+                elif rem_p <= 10: conf = 85
+                elif rem_p <= 20: conf = 75
+                elif rem_p <= 50: conf = 50
+                else: conf = max(1, int((total_p - rem_p) / total_p * 100))
+                
+                color = "#00e676" if conf >= 80 else ("#ffea00" if conf >= 50 else "#fc3c44")
+                st.markdown(f"<div style='text-align:right'><span class='probe-label'>AI CONFIDENCE</span><br><span class='candidates-count' style='color: {color};'>{conf}%</span></div>", unsafe_allow_html=True)
             
             st.progress(min(st.session_state.count / 12.0, 1.0))
             
