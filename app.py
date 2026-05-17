@@ -364,7 +364,8 @@ def load_data():
         name = name.strip()
         if name and name.lower() not in seen_names:
             # Normalize attributes for logic
-            is_overseas = "Yes" if (overseas and str(overseas).lower() == "yes") or (nationality and "indian" not in str(nationality).lower()) else "No"
+            nat_str = str(nationality).lower()
+            is_overseas = "Yes" if (overseas and str(overseas).lower() == "yes") or (nationality and "india" not in nat_str) else "No"
             players.append({
                 "Name": name, "Team": str(team or ""), "Role": str(role or ""),
                 "Nationality": str(nationality or ""), "Nickname": str(nickname or ""),
@@ -561,18 +562,28 @@ def get_player_image_url(player_name):
             return matched["Image_URL"]
 
     headers = {"User-Agent": "OmniscientAgent/1.0 (contact@example.com)"}
-    try:
-        search_query = urllib.parse.quote(player_name.strip())
-        url = f"https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch={search_query}&gsrlimit=1&prop=pageimages&format=json&pithumbsize=250"
-        response = requests.get(url, headers=headers, timeout=5)
-        data = response.json()
-        pages = data.get("query", {}).get("pages", {})
-        for page_id, page_info in pages.items():
-            if "thumbnail" in page_info:
-                return page_info["thumbnail"]["source"]
-    except Exception:
-        pass
+    
+    def fetch_wiki(query):
+        url = f"https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch={urllib.parse.quote(query)}&gsrlimit=1&prop=pageimages&format=json&pithumbsize=250"
+        try:
+            response = requests.get(url, headers=headers, timeout=5)
+            pages = response.json().get("query", {}).get("pages", {})
+            for page_info in pages.values():
+                if "thumbnail" in page_info:
+                    return page_info["thumbnail"]["source"]
+        except Exception:
+            pass
+        return None
+
+    # First try appending "cricketer" to avoid disambiguation pages (e.g., David Warner actor vs cricketer)
+    img_url = fetch_wiki(player_name.strip() + " cricketer")
+    if img_url:
+        return img_url
         
+    # If that fails, try the exact name
+    img_url = fetch_wiki(player_name.strip())
+    if img_url:
+        return img_url
 
 
     return f"https://ui-avatars.com/api/?name={urllib.parse.quote(player_name)}&background=random&color=fff&size=250"
@@ -632,8 +643,11 @@ TASK: Pick a CATEGORY and VALUE from STATS to split pool 50/50.
 RULE: MUST be a strict YES/NO question starting with "Kya" (e.g. "Kya wo player fast bowler hai?"). NEVER use player names. NO open-ended questions. ASK ONLY ABOUT THE GIVEN STATS.
 JSON: {{"cat": "...", "val": "...", "q": "Kya...", "msg": "Witty roast"}}"""
             else:
-                # Show samples with IDs to help AI differentiate and return y_id
-                samples = "|".join([f"ID:{i}={p['Name']}({p.get('Team')})" for i, p in enumerate(remaining)])
+                # Show rich samples with IDs to help AI differentiate and generate very specific questions
+                samples = "|".join([
+                    f"ID:{i}={p['Name']}({p.get('Team')}, {p.get('Role')}, {p.get('Bowling')} bowler, Tag:{p.get('Tag')}, Nickname:{p.get('Nickname')})" 
+                    for i, p in enumerate(remaining)
+                ])
                 history_short = [f"Q:{h['q']}|A:{h['a']}" for h in st.session_state.history]
                 prompt = f"""
 POOL: {samples} ({len(remaining)} total)
@@ -780,8 +794,11 @@ def make_guess():
     # Format history for the AI to understand it as a conversation
     history_lines = " | ".join([f"Q:{h['q']}-A:{h['a']}" for h in st.session_state.history])
     
-    # Identify winner using metadata (Cap at 10 to avoid token limit explosions)
-    candidates_data = "; ".join([f"{p['Name']} ({p.get('Team')}, {p.get('Role')})" for p in remaining[:10]])
+    # Identify winner using rich metadata (Cap at 10 to avoid token limit explosions)
+    candidates_data = "; ".join([
+        f"{p['Name']} (Team: {p.get('Team')}, Role: {p.get('Role')}, Bat: {p.get('Batting')}, Bowl: {p.get('Bowling')}, Tag: {p.get('Tag')}, Nickname: {p.get('Nickname')}, Fact: {p.get('FunnyName')})" 
+        for p in remaining[:10]
+    ])
     
     prompt = f"""
 FINAL VERDICT MODE 🎯
