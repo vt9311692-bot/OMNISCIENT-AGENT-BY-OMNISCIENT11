@@ -565,7 +565,7 @@ def get_player_image_url(player_name):
 
 def get_next_question():
     remaining = st.session_state.remaining_players
-    if st.session_state.count >= 12 or (len(remaining) <= 3 and st.session_state.count >= 8) or len(remaining) <= 1:
+    if st.session_state.count >= 12 or (len(remaining) <= 3 and st.session_state.count >= 8):
         return make_guess()
 
     # Phase 1: Local Statistical Filtering (FAST)
@@ -607,6 +607,7 @@ BANNED_LOGIC: {used_logic}
 TURN: {q_count}/12
 TASK: Pick a TECHNICAL CATEGORY and VALUE from STATS to split the pool 50/50. 
 REFINEMENT: Use "Deep Context" for better questions. 
+CRITICAL RULE: NEVER use ANY player's actual name in the question. Focus on traits only.
 Hints: CSK=Yellow/Thala, RCB=Red/King, MI=Blue/Hitman, KKR=Purple, GT=Titan/Hardik, RR=Pink.
 Logic: You can combine traits (e.g. "Kya wo player ek Blue jersey team ka All-rounder hai?")
 JSON: {{"category": "...", "value": "...", "question": "Fine Hinglish question", "ai_personality_comment": "Witty roast"}}"""
@@ -618,6 +619,7 @@ JSON: {{"category": "...", "value": "...", "question": "Fine Hinglish question",
 POOL: {samples} ({len(remaining)} total)
 HISTORY: {history_short}
 TASK: Unique YES/NO question using Deep Context (Rivalries/Traits).
+CRITICAL RULE: NEVER use ANY player's actual name in the question! Ask about their traits/stats.
 JSON: {{"question": "...", "ai_personality_comment": "...", "yes_indices": [IDs]}}"""
 
             res = call_ai(prompt)
@@ -687,14 +689,14 @@ JSON: {{"question": "...", "ai_personality_comment": "...", "yes_indices": [IDs]
                             }
                             st.rerun()
             
-            # FINAL IDENTITY CHECK: If even stats can't split them, just ask about a specific player
+            # FINAL FALLBACK: Ask a generic team question to keep it moving
             if remaining:
                 p = remaining[0]
                 st.session_state.current_q = {
-                    "question": f"Kya aap {p['Name']} ke baare mein soch rahe hain?",
-                    "ai_personality_comment": "Bhai, mera dimag thak gaya hai, ab toh seedha naam hi pooch raha hoon! 😅",
-                    "yes_indices": [0], # Only the first player matches this name
-                    "cat": "Identity", "val": p["Name"]
+                    "question": f"Kya wo player {p.get('Team', 'ek special team')} ke liye khelta hai?",
+                    "ai_personality_comment": "Hmm, lagta hai aap mujhe fasa rahe ho... 👀",
+                    "yes_indices": [i for i, pl in enumerate(remaining) if pl.get('Team') == p.get('Team')],
+                    "cat": "Team", "val": p.get("Team")
                 }
                 st.rerun()
             
