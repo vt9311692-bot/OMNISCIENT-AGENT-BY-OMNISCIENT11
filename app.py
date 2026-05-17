@@ -933,7 +933,14 @@ elif st.session_state.game_state == "result":
         st.markdown(f"<div class='result-name'>{guess_name}</div>", unsafe_allow_html=True)
         
         image_url = get_player_image_url(guess_name)
-        st.markdown(f"<div style='display: flex; justify-content: center; margin-bottom: 20px;'><img src='{image_url}' style='border-radius: 50%; width: 250px; height: 250px; object-fit: cover; border: 4px solid #fc3c44; box-shadow: 0 0 20px rgba(252,60,68,0.5);'></div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='display: flex; justify-content: center; margin-bottom: 10px;'><img src='{image_url}' style='border-radius: 50%; width: 250px; height: 250px; object-fit: cover; border: 4px solid #fc3c44; box-shadow: 0 0 20px rgba(252,60,68,0.5);'></div>", unsafe_allow_html=True)
+        
+        # Render player sub-details/badges from dataset
+        matched_profile = next((p for p in st.session_state.all_players if p['Name'].lower() == guess_name.lower()), None)
+        if matched_profile:
+            team = matched_profile.get('Team', '')
+            role = matched_profile.get('Role', '')
+            st.markdown(f"<div style='text-align: center; margin-bottom: 20px;'><span class='result-badge'>🏏 {team}</span> &nbsp; <span class='result-badge'>⚡ {role}</span></div>", unsafe_allow_html=True)
         
         # Celebration line from AI
         st.markdown(f"<div class='ai-bubble'>🎉 {celebration}</div>", unsafe_allow_html=True)
@@ -956,7 +963,7 @@ elif st.session_state.game_state == "result":
         
         col_a, col_b = st.columns(2)
         with col_a:
-            if st.button("🔄 Naya Game!", type="primary", use_container_width=True):
+            if st.button("🎮 Play Another Round", type="primary", use_container_width=True):
                 st.session_state.game_state = "start"
                 st.session_state.remaining_players = list(st.session_state.all_players)
                 st.session_state.history = []
