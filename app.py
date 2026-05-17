@@ -553,7 +553,7 @@ def call_ai(prompt, model_name=None):
 def get_player_image_url(player_name):
     headers = {"User-Agent": "OmniscientAgent/1.0 (contact@example.com)"}
     try:
-        search_query = urllib.parse.quote(player_name.strip() + " cricketer")
+        search_query = urllib.parse.quote(player_name.strip())
         url = f"https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch={search_query}&gsrlimit=1&prop=pageimages&format=json&pithumbsize=250"
         response = requests.get(url, headers=headers, timeout=5)
         data = response.json()
@@ -639,7 +639,7 @@ POOL: {samples} ({len(remaining)} total)
 HISTORY: {history_short}
 TASK: Unique YES/NO question.
 RULE: MUST be a strict YES/NO question starting with "Kya" (e.g. "Kya wo player MI mein khelta hai?"). NEVER use player names. NO open-ended questions.
-JSON: {{"q": "Kya...", "msg": "...", "y_id": [IDs that match the question]}}"""
+JSON: {{"q": "Kya...", "msg": "...", "reasoning": "Explain step by step which IDs match", "y_id": [IDs that match the question]}}"""
 
             res = call_ai(prompt)
             if res:
@@ -748,13 +748,14 @@ History: {history_lines}
 Candidates: {candidates_data}
 
 TASK: 
-1. Identify the ONE player matching the answers.
-2. Write 1 Hinglish paragraph reasoning matching 2-3 key answers.
-3. Witty 1-liner celebration.
+1. Identify the ONE player matching the answers EXACTLY from the Candidates list provided.
+2. CRITICAL: Your guess MUST be one of the Candidates. DO NOT guess anyone else.
+3. Write 1 Hinglish paragraph reasoning matching 2-3 key answers.
+4. Witty 1-liner celebration.
 
 JSON:
 {{
-  "guess": "EXACT Name",
+  "guess": "EXACT Name from Candidates",
   "confidence": "90%",
   "reasoning": "Hinglish paragraph explaining key answers",
   "celebration": "Witty 1-liner"
@@ -769,6 +770,12 @@ JSON:
             res = call_ai(prompt, model_name="llama-3.1-70b-versatile")
             
         if res:
+            # Force validation of the guess against candidates
+            guess = res.get("guess", "")
+            if len(candidates) > 0 and not any(guess.lower() == c.lower() for c in candidates):
+                res["guess"] = candidates[0]
+                res["reasoning"] = f"My neural net got slightly confused, but based on logic it has to be {candidates[0]}! " + res.get("reasoning", "")
+            
             st.session_state.final_guess = res
             st.session_state.game_state = "result"
             st.rerun()
