@@ -605,8 +605,8 @@ def get_next_question():
 STATS: {stats}
 BANNED: {used_logic}
 TASK: Pick a CATEGORY and VALUE from STATS to split pool 50/50. 
-RULE: Write clear, simple, and grammatically correct Hinglish questions! NEVER use player names.
-JSON: {{"cat": "...", "val": "...", "q": "Clear Hinglish question", "msg": "Witty roast"}}"""
+RULE: MUST be a strict YES/NO question starting with "Kya" (e.g. "Kya wo player fast bowler hai?"). NEVER use player names. NO open-ended questions.
+JSON: {{"cat": "...", "val": "...", "q": "Kya...", "msg": "Witty roast"}}"""
             else:
                 # Show samples to help AI differentiate
                 samples = "|".join([f"{p['Name']}({p.get('Team')},{p.get('Role')})" for p in remaining[:5]])
@@ -615,8 +615,8 @@ JSON: {{"cat": "...", "val": "...", "q": "Clear Hinglish question", "msg": "Witt
 POOL: {samples} ({len(remaining)} total)
 HISTORY: {history_short}
 TASK: Unique YES/NO question.
-RULE: Clear, simple, grammatically correct Hinglish! NEVER use player names.
-JSON: {{"q": "...", "msg": "...", "y_id": [IDs]}}"""
+RULE: MUST be a strict YES/NO question starting with "Kya" (e.g. "Kya wo player MI mein khelta hai?"). NEVER use player names. NO open-ended questions.
+JSON: {{"q": "Kya...", "msg": "...", "y_id": [IDs]}}"""
 
             res = call_ai(prompt)
             if res:
