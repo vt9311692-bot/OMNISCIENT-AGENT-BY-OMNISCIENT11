@@ -639,11 +639,12 @@ def get_next_question():
 STATS: {clean_stats}
 BANNED: {used_logic}
 HISTORY: {history_short}
-TASK: Pick a CATEGORY and VALUE from STATS to split pool 50/50. 
-RULE 1: MUST start with "Kya" (e.g. "Kya wo player fast bowler hai?").
-RULE 2: CRITICAL - NEVER ask a question that is similar to any in the HISTORY or BANNED list. Generate a 100% FRESH question!
-RULE 3: ASK ONLY ABOUT THE GIVEN STATS.
-JSON: {{"cat": "...", "val": "...", "q": "Kya...", "msg": "Witty roast"}}"""
+TASK: Pick a CATEGORY and VALUE from STATS to split the player pool 50/50. 
+RULE 1: MUST start with "Kya aapka player..." (e.g. "Kya aapka player fast bowler hai?").
+RULE 2: CRITICAL - NEVER ask general cricket trivia. You must ask about the specific player the user is thinking of!
+RULE 3: NEVER ask a question that is similar to any in the HISTORY or BANNED list. Generate a 100% FRESH question!
+RULE 4: ASK ONLY ABOUT THE GIVEN STATS.
+JSON: {{"cat": "selected category", "val": "selected value", "q": "Kya aapka player...", "msg": "write a short funny hinglish comment here"}}"""
             else:
                 # Show rich samples with IDs to help AI differentiate and generate very specific questions
                 samples = "|".join([
@@ -654,16 +655,26 @@ JSON: {{"cat": "...", "val": "...", "q": "Kya...", "msg": "Witty roast"}}"""
                 prompt = f"""
 POOL: {samples} ({len(remaining)} total)
 HISTORY (DO NOT REPEAT): {history_short}
-TASK: Ask a 100% FRESH, Unique YES/NO question to split the POOL.
-RULE 1: MUST start with "Kya". 
-RULE 2: CRITICAL - NEVER ask about anything that was already asked in the HISTORY! Look at the HISTORY and find a completely new attribute (like Nickname, Bowling style, Tag, or a different Team) to ask about.
-JSON: {{"q": "Kya...", "msg": "...", "reasoning": "Explain step by step which IDs match", "y_id": [IDs that match the question]}}"""
+TASK: Ask a 100% FRESH, Unique YES/NO question to identify the user's specific player from the POOL.
+RULE 1: MUST start with "Kya aapka player...". 
+RULE 2: CRITICAL - NEVER ask general trivia. Ask about a specific attribute (Nickname, Bowling style, Tag, Team) belonging to some players in the POOL.
+RULE 3: CRITICAL - NEVER ask about anything already asked in the HISTORY! Find a completely new attribute.
+JSON: {{"q": "Kya aapka player...", "msg": "write a short funny hinglish comment here", "reasoning": "Explain step by step which IDs match", "y_id": [IDs that match the question]}}"""
 
             res = call_ai(prompt)
             if res:
                 q_text = res.get("q", "").strip()
                 cat = res.get("cat")
                 val = res.get("val")
+                
+                # STRICT VALIDATION: Forbid general trivia questions
+                if "aapka player" not in q_text.lower() and "wo player" not in q_text.lower():
+                    continue # Force the AI to retry and generate a valid player-focused question
+                    
+                # Fix lazy AI placeholder roasts
+                msg_text = res.get("msg", "")
+                if msg_text in ["Witty roast", "...", "write a short funny hinglish comment here"] or not msg_text:
+                    res["msg"] = random.choice(["Sochne do mujhe... 🤔", "Achha, yeh baat hai? 😏", "Hmm, interesting! 🏏"])
                 
                 # Check for exact duplicates
                 past_qs = [h['q'].lower() for h in st.session_state.history]
