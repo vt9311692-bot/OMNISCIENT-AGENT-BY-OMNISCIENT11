@@ -551,10 +551,11 @@ def call_ai(prompt, model_name=None):
     return None
 
 def get_player_image_url(player_name):
+    headers = {"User-Agent": "OmniscientAgent/1.0 (contact@example.com)"}
     try:
         search_query = urllib.parse.quote(player_name.strip() + " cricketer")
         url = f"https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch={search_query}&gsrlimit=1&prop=pageimages&format=json&pithumbsize=250"
-        response = requests.get(url, timeout=5)
+        response = requests.get(url, headers=headers, timeout=5)
         data = response.json()
         pages = data.get("query", {}).get("pages", {})
         for page_id, page_info in pages.items():
@@ -563,20 +564,13 @@ def get_player_image_url(player_name):
     except Exception:
         pass
         
-    # FALLBACK: Bing Image Search Scraper for players not on Wikipedia
+    # FALLBACK: DuckDuckGo Search API (100% Free, No API Key required)
     try:
-        import re
-        bing_url = f"https://www.bing.com/images/search?q={urllib.parse.quote(player_name + ' ipl cricket')}"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
-        }
-        html = requests.get(bing_url, headers=headers, timeout=5).text
-        # Extract the first image thumbnail URL from Bing's raw HTML
-        match = re.search(r'"murl":"(https?://[^"]+.(?:jpg|jpeg|png))"', html, re.IGNORECASE)
-        if not match:
-            match = re.search(r'"turl":"(https?://[^"]+)"', html, re.IGNORECASE)
-        if match:
-            return match.group(1)
+        from duckduckgo_search import DDGS
+        with DDGS() as ddgs:
+            results = ddgs.images(f"{player_name} ipl cricket", max_results=1)
+            if results and len(results) > 0:
+                return results[0]['image']
     except Exception:
         pass
 
@@ -601,14 +595,22 @@ def get_next_question():
     }
     for p in remaining:
         stats["Overseas"][p.get("Overseas", "No")] = stats["Overseas"].get(p.get("Overseas", "No"), 0) + 1
-        r = p.get("Role", "Unknown")
-        stats["Role"][r] = stats["Role"].get(r, 0) + 1
-        t = p.get("Team", "Unknown")
-        stats["Team"][t] = stats["Team"].get(t, 0) + 1
+        r = p.get("Role", "").strip()
+        if r and r.lower() != "unknown":
+            stats["Role"][r] = stats["Role"].get(r, 0) + 1
+        t = p.get("Team", "").strip()
+        if t and t.lower() != "unknown":
+            stats["Team"][t] = stats["Team"].get(t, 0) + 1
         b = "Left" if "Left" in str(p.get("Batting", "")) else "Right"
         stats["Batting"][b] += 1
         stats["Captain"]["Yes" if "Yes" in str(p.get("Captain", "")) else "No"] += 1
         stats["Keeper"]["Yes" if "Yes" in str(p.get("Keeper", "")) else "No"] += 1
+
+    clean_stats = {}
+    for cat, counts in stats.items():
+        valid_counts = {k: v for k, v in counts.items() if v > 0 and str(k).strip() != ""}
+        if len(valid_counts) > 1:
+            clean_stats[cat] = valid_counts
 
     past_questions = [h['q'] for h in st.session_state.history]
     q_count = st.session_state.count + 1
@@ -622,15 +624,15 @@ def get_next_question():
             history_short = [f"Q:{h['q']}|A:{h['a']}" for h in st.session_state.history]
             if use_local:
                 prompt = f"""
-STATS: {stats}
+STATS: {clean_stats}
 BANNED: {used_logic}
 HISTORY: {history_short}
 TASK: Pick a CATEGORY and VALUE from STATS to split pool 50/50. 
-RULE: MUST be a strict YES/NO question starting with "Kya" (e.g. "Kya wo player fast bowler hai?"). NEVER use player names. NO open-ended questions.
+RULE: MUST be a strict YES/NO question starting with "Kya" (e.g. "Kya wo player fast bowler hai?"). NEVER use player names. NO open-ended questions. ASK ONLY ABOUT THE GIVEN STATS.
 JSON: {{"cat": "...", "val": "...", "q": "Kya...", "msg": "Witty roast"}}"""
             else:
                 # Show samples with IDs to help AI differentiate and return y_id
-                samples = "|".join([f"ID:{i}={p['Name']}({p.get('Team')})" for i, p in enumerate(remaining[:10])])
+                samples = "|".join([f"ID:{i}={p['Name']}({p.get('Team')})" for i, p in enumerate(remaining)])
                 history_short = [f"Q:{h['q']}|A:{h['a']}" for h in st.session_state.history]
                 prompt = f"""
 POOL: {samples} ({len(remaining)} total)
@@ -683,7 +685,7 @@ JSON: {{"q": "Kya...", "msg": "...", "y_id": [IDs that match the question]}}"""
             }
             for cat, temp in templates.items():
                 if cat not in used_cats:
-                    vals = [p.get(cat) for p in remaining if p.get(cat)]
+                    vals = [p.get(cat) for p in remaining if p.get(cat) and str(p.get(cat)).strip().lower() not in ["", "unknown"]]
                     if vals:
                         val = vals[0]
                         # Special handling for boolean-style values
