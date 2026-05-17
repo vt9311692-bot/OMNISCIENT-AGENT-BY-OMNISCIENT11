@@ -562,6 +562,24 @@ def get_player_image_url(player_name):
                 return page_info["thumbnail"]["source"]
     except Exception:
         pass
+        
+    # FALLBACK: Bing Image Search Scraper for players not on Wikipedia
+    try:
+        import re
+        bing_url = f"https://www.bing.com/images/search?q={urllib.parse.quote(player_name + ' ipl cricket')}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+        }
+        html = requests.get(bing_url, headers=headers, timeout=5).text
+        # Extract the first image thumbnail URL from Bing's raw HTML
+        match = re.search(r'"murl":"(https?://[^"]+.(?:jpg|jpeg|png))"', html, re.IGNORECASE)
+        if not match:
+            match = re.search(r'"turl":"(https?://[^"]+)"', html, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    except Exception:
+        pass
+
     return f"https://ui-avatars.com/api/?name={urllib.parse.quote(player_name)}&background=random&color=fff&size=250"
 
 def get_next_question():
@@ -637,12 +655,12 @@ JSON: {{"q": "Kya...", "msg": "...", "y_id": [IDs that match the question]}}"""
 
                 if use_local:
                     yes_indices = [i for i, p in enumerate(remaining) if (
-                        (cat == "Overseas" and p.get("Overseas") == val) or
-                        (cat == "Role" and p.get("Role") == val) or
-                        (cat == "Team" and p.get("Team") == val) or
-                        (cat == "Batting" and val in str(p.get("Batting", ""))) or
-                        (cat == "Captain" and (("Yes" in str(p.get("Captain", ""))) if val == "Yes" else ("Yes" not in str(p.get("Captain", ""))))) or
-                        (cat == "Keeper" and (("Yes" in str(p.get("Keeper", ""))) if val == "Yes" else ("Yes" not in str(p.get("Keeper", "")))))
+                        (cat == "Overseas" and str(p.get("Overseas", "")).lower() == str(val).lower()) or
+                        (cat == "Role" and str(val).lower() in str(p.get("Role", "")).lower()) or
+                        (cat == "Team" and str(val).lower() == str(p.get("Team", "")).lower()) or
+                        (cat == "Batting" and str(val).lower() in str(p.get("Batting", "")).lower()) or
+                        (cat == "Captain" and (("yes" in str(p.get("Captain", "")).lower()) if str(val).lower() == "yes" else ("yes" not in str(p.get("Captain", "")).lower()))) or
+                        (cat == "Keeper" and (("yes" in str(p.get("Keeper", "")).lower()) if str(val).lower() == "yes" else ("yes" not in str(p.get("Keeper", "")).lower())))
                     )]
                     
                     if not yes_indices or len(yes_indices) == len(remaining): continue
@@ -701,7 +719,7 @@ JSON: {{"q": "Kya...", "msg": "...", "y_id": [IDs that match the question]}}"""
                     letter = next((l for l in string.ascii_uppercase if l not in asked_letters), 'A')
                 
                 st.session_state.current_q = {
-                    "q": f"Kya us player ke naam mein '{letter}' akshar (letter) aata hai?",
+                    "q": f"Chalo thoda hint do... kya is player ke naam mein '{letter}' letter aata hai?",
                     "msg": "Stats samajh nahi aa rahe... thoda alag dimaag lagata hoon! 🤓",
                     "y_id": [i for i, pl in enumerate(remaining) if letter in pl['Name'].upper()],
                     "cat": "Letter", "val": letter
