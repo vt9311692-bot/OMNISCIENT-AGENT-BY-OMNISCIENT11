@@ -688,9 +688,11 @@ YOUR TURN (GENERATE STRICT JSON):"""
                 past_qs = [h['q'].lower() for h in st.session_state.history]
                 is_dup = any(h['q'].lower().strip() == q_text.lower().strip() for h in st.session_state.history)
                 
-                if attempt < 4 and use_local and f"{cat}:{val}" in used_logic: is_dup = True
+                if use_local and f"{cat}:{val}" in used_logic: 
+                    is_dup = True
                 
-                if is_dup: continue
+                if is_dup: 
+                    continue
 
                 if use_local:
                     yes_indices = [i for i, p in enumerate(remaining) if (
