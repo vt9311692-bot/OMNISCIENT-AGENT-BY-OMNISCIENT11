@@ -863,7 +863,14 @@ elif st.session_state.game_state == "playing":
                 prev_pool = list(st.session_state.remaining_players)
                 
                 # Filter pool based on indices (Robust integer conversion)
-                yes_indices = set(int(i) for i in q.get("y_id", []))
+                yes_indices = set()
+                y_val = q.get("y_id", [])
+                if isinstance(y_val, list):
+                    for i in y_val:
+                        try:
+                            yes_indices.add(int(i))
+                        except (ValueError, TypeError):
+                            pass
                 
                 if ans == "Yes":
                     st.session_state.remaining_players = [
