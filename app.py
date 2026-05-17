@@ -648,7 +648,7 @@ RULE 4: ASK ONLY ABOUT THE GIVEN STATS.
 EXAMPLE GOOD OUTPUT:
 {{"cat": "Team", "val": "MI", "q": "Kya aapka player Mumbai Indians (MI) ke liye khelta hai?", "msg": "Ambani ji ka khiladi lagta hai! 💰"}}
 
-YOUR TURN (GENERATE STRICT JSON):
+YOUR TURN (GENERATE STRICT JSON):"""
             else:
                 # Show rich samples with IDs to help AI differentiate and generate very specific questions
                 samples = "|".join([
