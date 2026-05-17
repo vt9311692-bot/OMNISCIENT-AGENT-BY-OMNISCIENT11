@@ -3,6 +3,8 @@ import csv
 import json
 import os
 import random
+import urllib.parse
+import requests
 from groq import Groq
 try:
     import google.generativeai as genai
@@ -554,7 +556,7 @@ def call_ai(prompt, model_name=None):
 
 def get_next_question():
     remaining = st.session_state.remaining_players
-    if len(remaining) <= 1 or st.session_state.count >= 8:
+    if st.session_state.count >= 12 or (len(remaining) <= 3 and st.session_state.count >= 8) or len(remaining) <= 1:
         return make_guess()
 
     # Phase 1: Local Statistical Filtering (FAST)
@@ -593,7 +595,7 @@ def get_next_question():
                 prompt = f"""
 STATS: {stats}
 BANNED_LOGIC: {used_logic}
-TURN: {q_count}/8
+TURN: {q_count}/12
 TASK: Pick a TECHNICAL CATEGORY and VALUE from STATS to split the pool 50/50. 
 REFINEMENT: Use "Deep Context" for better questions. 
 Hints: CSK=Yellow/Thala, RCB=Red/King, MI=Blue/Hitman, KKR=Purple, GT=Titan/Hardik, RR=Pink.
@@ -602,11 +604,11 @@ JSON: {{"category": "...", "value": "...", "question": "Fine Hinglish question",
             else:
                 # Show samples to help AI differentiate
                 samples = "|".join([f"{p['Name']}({p.get('Team')},{p.get('Role')})" for p in remaining[:5]])
+                history_short = [f"Q:{h['q']}|A:{h['a']}" for h in st.session_state.history]
                 prompt = f"""
-POOL SAMPLES: {samples}
-POOL SIZE: {len(remaining)}
-HISTORY: {st.session_state.history}
-TASK: Unique YES/NO question. Use "Deep Context" (Rivalries, Team Colors, Iconic traits).
+POOL: {samples} ({len(remaining)} total)
+HISTORY: {history_short}
+TASK: Unique YES/NO question using Deep Context (Rivalries/Traits).
 JSON: {{"question": "...", "ai_personality_comment": "...", "yes_indices": [IDs]}}"""
 
             res = call_ai(prompt)
@@ -696,43 +698,27 @@ def make_guess():
     candidates = [p["Name"] for p in remaining]
     
     # Format history for the AI to understand it as a conversation
-    history_lines = "\n".join([f"Q: {h['q']} | A: {h['a']}" for h in st.session_state.history])
+    history_lines = " | ".join([f"Q:{h['q']}-A:{h['a']}" for h in st.session_state.history])
     
-    # Identify winner using metadata (Cap at 20 to avoid token limit explosions)
-    candidates_data = "; ".join([f"{p['Name']} ({p.get('Team')}, {p.get('Role')}, {p.get('FunnyName')})" for p in remaining[:20]])
+    # Identify winner using metadata (Cap at 10 to avoid token limit explosions)
+    candidates_data = "; ".join([f"{p['Name']} ({p.get('Team')}, {p.get('Role')})" for p in remaining[:10]])
     
     prompt = f"""
-OMNISCIENT AGENT - ANTI-GRAVITY FINAL VERDICT MODE 🎯
+FINAL VERDICT MODE 🎯
+History: {history_lines}
+Candidates: {candidates_data}
 
-Game History:
-{history_lines}
+TASK: 
+1. Identify the ONE player matching the answers.
+2. Write 1 Hinglish paragraph reasoning matching 2-3 key answers.
+3. Witty 1-liner celebration.
 
-Remaining Candidates:
-{candidates_data}
-
-🔍 CRITICAL TASK:
-1. Analyze EVERY yes/no answer in history
-2. Identify which 2-3 SPECIFIC answers were GAME-CHANGERS (narrowed pool most)
-3. Use "anti-gravity detection" - highlight unique characteristics that stood out
-4. Name the ONE player who matches ALL conditions
-
-📝 REASONING RULES:
-- Write reasoning as ONE flowing paragraph (NO lists/JSON formatting inside reasoning)
-- Mention 2-3 KEY answers that led to the player
-- Use Hinglish language naturally
-- Example: "Bhai, dekho logic. Aapne kaha opening batsman hai, right-hander, aur overseas... Virat Kohli toh RCB mein khelta hai, left-hander bhi nahi. Toh obviously ye Faf du Plessis hona chahiye!"
-- Highlight ANTI-GRAVITY traits: overseas vs domestic, big hitter vs accumulator, etc.
-
-🎉 CELEBRATION:
-- Short, witty, confident one-liner
-- Use cricket slang: "Chakka maara!", "Six aya!", "Boundary nikala!", "Wicket gira!", "Googly daal di!", "Neural network ne catch pakad liya!" etc.
-
-JSON OUTPUT (MANDATORY):
+JSON:
 {{
-  "guess": "EXACT Player Name",
-  "confidence": "92%",
-  "reasoning": "Full paragraph explaining 2-3 key answers that confirm this player",
-  "celebration": "One-liner witty remark about the victory"
+  "guess": "EXACT Name",
+  "confidence": "90%",
+  "reasoning": "Hinglish paragraph explaining key answers",
+  "celebration": "Witty 1-liner"
 }}"""
     
     with st.spinner("Locking in final answer... 🎯"):
@@ -836,17 +822,18 @@ elif st.session_state.game_state == "playing":
             
             col_a, col_b = st.columns([1,1])
             with col_a:
-                st.markdown(f"<div><span class='probe-label'>SAWAAL</span><br><span class='probe-count'>{st.session_state.count + 1} / 8</span></div>", unsafe_allow_html=True)
+                st.markdown(f"<div><span class='probe-label'>SAWAAL</span><br><span class='probe-count'>{st.session_state.count + 1} / 12</span></div>", unsafe_allow_html=True)
             with col_b:
                 st.markdown(f"<div style='text-align:right'><span class='probe-label'>CANDIDATES</span><br><span class='candidates-count'>{len(st.session_state.remaining_players)}</span></div>", unsafe_allow_html=True)
             
-            st.progress(st.session_state.count / 8.0)
+            st.progress(min(st.session_state.count / 12.0, 1.0))
             
             comment = q.get('ai_personality_comment', 'Hmm... thinking...')
             st.markdown(f"<div class='ai-bubble'>💬 {comment}</div>", unsafe_allow_html=True)
             st.subheader(q.get('question', 'Scanning neural patterns...'))
             
             c1, c2 = st.columns(2)
+            c3, c4 = st.columns(2)
             
             def handle_ans(ans):
                 st.session_state.undo_stack.append({
@@ -872,7 +859,7 @@ elif st.session_state.game_state == "playing":
                         p for i, p in enumerate(st.session_state.remaining_players)
                         if i not in yes_indices
                     ]
-                # If "Maybe", we don't filter the pool at all, just proceed to next question.
+                # If "Maybe" or "Don't Know", we don't filter the pool at all, just proceed to next question.
                 
                 if len(st.session_state.remaining_players) == 0:
                     st.session_state.remaining_players = prev_pool
@@ -883,16 +870,20 @@ elif st.session_state.game_state == "playing":
 
             with c1: 
                 if st.button("✅ Yes", type="primary", use_container_width=True): handle_ans("Yes")
-                if st.button("🤷 Maybe", use_container_width=True): handle_ans("Maybe")
             with c2: 
                 if st.button("❌ No", use_container_width=True): handle_ans("No")
-                if st.button("↩️ Undo", use_container_width=True, disabled=not st.session_state.undo_stack):
-                    last = st.session_state.undo_stack.pop()
-                    st.session_state.remaining_players = last["remaining_players"]
-                    st.session_state.history = last["history"]
-                    st.session_state.count = last["count"]
-                    st.session_state.current_q = last["current_q"]
-                    st.rerun()
+            with c3:
+                if st.button("🤷 Maybe", use_container_width=True): handle_ans("Maybe")
+            with c4:
+                if st.button("❓ Don't Know", use_container_width=True): handle_ans("Don't Know")
+            
+            if st.button("↩️ Undo", use_container_width=True, disabled=not st.session_state.undo_stack):
+                last = st.session_state.undo_stack.pop()
+                st.session_state.remaining_players = last["remaining_players"]
+                st.session_state.history = last["history"]
+                st.session_state.count = last["count"]
+                st.session_state.current_q = last["current_q"]
+                st.rerun()
             
             st.markdown("---")
             if st.button("🔑 Change API Key", use_container_width=True):
@@ -903,6 +894,19 @@ elif st.session_state.game_state == "playing":
                 st.session_state.game_state = "start"
                 st.rerun()
 
+def get_player_image_url(player_name):
+    try:
+        url = f"https://en.wikipedia.org/w/api.php?action=query&titles={urllib.parse.quote(player_name)}&prop=pageimages&format=json&pithumbsize=500"
+        response = requests.get(url, timeout=5)
+        data = response.json()
+        pages = data.get("query", {}).get("pages", {})
+        for page_id, page_info in pages.items():
+            if "thumbnail" in page_info:
+                return page_info["thumbnail"]["source"]
+    except Exception:
+        pass
+    return f"https://ui-avatars.com/api/?name={urllib.parse.quote(player_name)}&background=random&color=fff&size=500"
+
 elif st.session_state.game_state == "result":
     res = st.session_state.final_guess
     with st.container():
@@ -911,6 +915,9 @@ elif st.session_state.game_state == "result":
         # THE BIG REVEAL
         st.markdown("<div class='sahi-pakde'>🎯 SAHI PAKDE HAI! 🎯</div>", unsafe_allow_html=True)
         st.markdown(f"<div class='result-name'>{res['guess']}</div>", unsafe_allow_html=True)
+        
+        image_url = get_player_image_url(res['guess'])
+        st.markdown(f"<div style='display: flex; justify-content: center; margin-bottom: 20px;'><img src='{image_url}' style='border-radius: 50%; width: 250px; height: 250px; object-fit: cover; border: 4px solid #fc3c44; box-shadow: 0 0 20px rgba(252,60,68,0.5);'></div>", unsafe_allow_html=True)
         
         # Celebration line from AI
         celebration = res.get('celebration', 'Bhai main toh genius hoon! 😎')
