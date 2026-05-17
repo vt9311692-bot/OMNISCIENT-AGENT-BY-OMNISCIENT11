@@ -603,14 +603,10 @@ def get_next_question():
             if use_local:
                 prompt = f"""
 STATS: {stats}
-BANNED_LOGIC: {used_logic}
-TURN: {q_count}/12
-TASK: Pick a TECHNICAL CATEGORY and VALUE from STATS to split the pool 50/50. 
-REFINEMENT: Use "Deep Context" for better questions. 
-CRITICAL RULE: NEVER use ANY player's actual name in the question. Focus on traits only.
-Hints: CSK=Yellow/Thala, RCB=Red/King, MI=Blue/Hitman, KKR=Purple, GT=Titan/Hardik, RR=Pink.
-Logic: You can combine traits (e.g. "Kya wo player ek Blue jersey team ka All-rounder hai?")
-JSON: {{"category": "...", "value": "...", "question": "Fine Hinglish question", "ai_personality_comment": "Witty roast"}}"""
+BANNED: {used_logic}
+TASK: Pick a CATEGORY and VALUE from STATS to split pool 50/50. 
+RULE: Write clear, simple, and grammatically correct Hinglish questions! NEVER use player names.
+JSON: {{"cat": "...", "val": "...", "q": "Clear Hinglish question", "msg": "Witty roast"}}"""
             else:
                 # Show samples to help AI differentiate
                 samples = "|".join([f"{p['Name']}({p.get('Team')},{p.get('Role')})" for p in remaining[:5]])
@@ -618,15 +614,15 @@ JSON: {{"category": "...", "value": "...", "question": "Fine Hinglish question",
                 prompt = f"""
 POOL: {samples} ({len(remaining)} total)
 HISTORY: {history_short}
-TASK: Unique YES/NO question using Deep Context (Rivalries/Traits).
-CRITICAL RULE: NEVER use ANY player's actual name in the question! Ask about their traits/stats.
-JSON: {{"question": "...", "ai_personality_comment": "...", "yes_indices": [IDs]}}"""
+TASK: Unique YES/NO question.
+RULE: Clear, simple, grammatically correct Hinglish! NEVER use player names.
+JSON: {{"q": "...", "msg": "...", "y_id": [IDs]}}"""
 
             res = call_ai(prompt)
             if res:
-                q_text = res.get("question", "").strip()
-                cat = res.get("category")
-                val = res.get("value")
+                q_text = res.get("q", "").strip()
+                cat = res.get("cat")
+                val = res.get("val")
                 
                 # Check for duplicates (Relaxed on last attempt)
                 is_dup = any(h['q'].lower().strip() == q_text.lower().strip() for h in st.session_state.history)
@@ -645,10 +641,10 @@ JSON: {{"question": "...", "ai_personality_comment": "...", "yes_indices": [IDs]
                     )]
                     
                     if not yes_indices or len(yes_indices) == len(remaining): continue
-                    res["yes_indices"] = yes_indices
+                    res["y_id"] = yes_indices
                     res["cat"], res["val"] = cat, val
                 
-                if not res.get("yes_indices") and not use_local: continue
+                if not res.get("y_id") and not use_local: continue
                 
                 st.session_state.current_q = res
                 st.rerun()
@@ -682,9 +678,9 @@ JSON: {{"question": "...", "ai_personality_comment": "...", "yes_indices": [IDs]
                         
                         if 0 < len(yes_indices) < len(remaining):
                             st.session_state.current_q = {
-                                "question": q_text,
-                                "ai_personality_comment": "Neural link stable, just keeping it simple! 😎",
-                                "yes_indices": yes_indices,
+                                "q": q_text,
+                                "msg": "Neural link stable, just keeping it simple! 😎",
+                                "y_id": yes_indices,
                                 "cat": cat, "val": val
                             }
                             st.rerun()
@@ -693,9 +689,9 @@ JSON: {{"question": "...", "ai_personality_comment": "...", "yes_indices": [IDs]
             if remaining:
                 p = remaining[0]
                 st.session_state.current_q = {
-                    "question": f"Kya wo player {p.get('Team', 'ek special team')} ke liye khelta hai?",
-                    "ai_personality_comment": "Hmm, lagta hai aap mujhe fasa rahe ho... 👀",
-                    "yes_indices": [i for i, pl in enumerate(remaining) if pl.get('Team') == p.get('Team')],
+                    "q": f"Kya wo player {p.get('Team', 'ek special team')} ke liye khelta hai?",
+                    "msg": "Hmm, lagta hai aap mujhe fasa rahe ho... 👀",
+                    "y_id": [i for i, pl in enumerate(remaining) if pl.get('Team') == p.get('Team')],
                     "cat": "Team", "val": p.get("Team")
                 }
                 st.rerun()
@@ -839,9 +835,9 @@ elif st.session_state.game_state == "playing":
             
             st.progress(min(st.session_state.count / 12.0, 1.0))
             
-            comment = q.get('ai_personality_comment', 'Hmm... thinking...')
+            comment = q.get('msg', 'Hmm... thinking...')
             st.markdown(f"<div class='ai-bubble'>💬 {comment}</div>", unsafe_allow_html=True)
-            st.subheader(q.get('question', 'Scanning neural patterns...'))
+            st.subheader(q.get('q', 'Scanning neural patterns...'))
             
             c1, c2 = st.columns(2)
             c3, c4 = st.columns(2)
@@ -853,12 +849,12 @@ elif st.session_state.game_state == "playing":
                     "count": st.session_state.count,
                     "current_q": st.session_state.current_q
                 })
-                st.session_state.history.append({"q": q["question"], "a": ans, "cat": q.get("cat"), "val": q.get("val")})
+                st.session_state.history.append({"q": q["q"], "a": ans, "cat": q.get("cat"), "val": q.get("val")})
                 
                 prev_pool = list(st.session_state.remaining_players)
                 
                 # Filter pool based on indices (Robust integer conversion)
-                yes_indices = set(int(i) for i in q.get("yes_indices", []))
+                yes_indices = set(int(i) for i in q.get("y_id", []))
                 
                 if ans == "Yes":
                     st.session_state.remaining_players = [
