@@ -582,18 +582,6 @@ def get_player_image_url(player_name):
                 return results[0]['image']
     except Exception:
         pass
-        
-    # SUPER FALLBACK: Bing Image Search Scraper
-    try:
-        bing_url = f"https://www.bing.com/images/search?q={urllib.parse.quote(player_name + ' ipl profile')}"
-        headers_bing = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        html = requests.get(bing_url, headers=headers_bing, timeout=5).text
-        import re
-        match = re.search(r'murl&quot;:&quot;(https://[^&]+?\.(?:jpg|png|jpeg))&quot;', html, re.IGNORECASE)
-        if match:
-            return match.group(1)
-    except Exception:
-        pass
 
     return f"https://ui-avatars.com/api/?name={urllib.parse.quote(player_name)}&background=random&color=fff&size=250"
 
