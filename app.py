@@ -640,8 +640,8 @@ STATS: {clean_stats}
 BANNED: {used_logic}
 HISTORY: {history_short}
 TASK: Pick a CATEGORY and VALUE from STATS to split the player pool 50/50. 
-RULE 1: MUST start with "Kya aapka player..." (e.g. "Kya aapka player fast bowler hai?").
-RULE 2: CRITICAL - NEVER ask general cricket trivia. You must ask about the specific player the user is thinking of!
+RULE 1: MUST start with "Kya aapka player..."
+RULE 2: CRITICAL - Keep the question completely DIRECT and FACTUAL based on the STATS. (e.g. For Team="CSK", ask "Kya aapka player CSK ke liye khelta hai?", DO NOT ask if they are a "fan" or "love" the team). Keep humor ONLY in the 'msg' field!
 RULE 3: NEVER ask a question that is similar to any in the HISTORY or BANNED list. Generate a 100% FRESH question!
 RULE 4: ASK ONLY ABOUT THE GIVEN STATS.
 JSON: {{"cat": "selected category", "val": "selected value", "q": "Kya aapka player...", "msg": "write a short funny hinglish comment here"}}"""
@@ -657,7 +657,7 @@ POOL: {samples} ({len(remaining)} total)
 HISTORY (DO NOT REPEAT): {history_short}
 TASK: Ask a 100% FRESH, Unique YES/NO question to identify the user's specific player from the POOL.
 RULE 1: MUST start with "Kya aapka player...". 
-RULE 2: CRITICAL - NEVER ask general trivia. Ask about a specific attribute (Nickname, Bowling style, Tag, Team) belonging to some players in the POOL.
+RULE 2: CRITICAL - Keep the question completely DIRECT and FACTUAL. Ask about a specific attribute (Nickname, Bowling style, Tag, Team) belonging to some players in the POOL. Do not use flowery jokes in the question!
 RULE 3: CRITICAL - NEVER ask about anything already asked in the HISTORY! Find a completely new attribute.
 JSON: {{"q": "Kya aapka player...", "msg": "write a short funny hinglish comment here", "reasoning": "Explain step by step which IDs match", "y_id": [IDs that match the question]}}"""
 
