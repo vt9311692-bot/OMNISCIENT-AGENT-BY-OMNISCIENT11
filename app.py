@@ -552,7 +552,7 @@ def call_ai(prompt, model_name=None):
 
 def get_player_image_url(player_name):
     try:
-        url = f"https://en.wikipedia.org/w/api.php?action=query&titles={urllib.parse.quote(player_name)}&prop=pageimages&format=json&pithumbsize=500"
+        url = f"https://en.wikipedia.org/w/api.php?action=query&titles={urllib.parse.quote(player_name)}&prop=pageimages&format=json&pithumbsize=250"
         response = requests.get(url, timeout=5)
         data = response.json()
         pages = data.get("query", {}).get("pages", {})
@@ -561,7 +561,7 @@ def get_player_image_url(player_name):
                 return page_info["thumbnail"]["source"]
     except Exception:
         pass
-    return f"https://ui-avatars.com/api/?name={urllib.parse.quote(player_name)}&background=random&color=fff&size=500"
+    return f"https://ui-avatars.com/api/?name={urllib.parse.quote(player_name)}&background=random&color=fff&size=250"
 
 def get_next_question():
     remaining = st.session_state.remaining_players
@@ -625,15 +625,9 @@ JSON: {{"q": "Kya...", "msg": "...", "y_id": [IDs]}}"""
                 cat = res.get("cat")
                 val = res.get("val")
                 
-                # Check for duplicates using keywords
+                # Check for exact duplicates
                 past_qs = [h['q'].lower() for h in st.session_state.history]
                 is_dup = any(h['q'].lower().strip() == q_text.lower().strip() for h in st.session_state.history)
-                
-                # Keyword heuristic to prevent rephrased repeats
-                keywords = ["overseas", "captain", "keeper", "fast bowler", "spin", "left hand", "right hand", "all-rounder"]
-                for kw in keywords:
-                    if kw in q_text.lower() and any(kw in pq for pq in past_qs):
-                        is_dup = True
                 
                 if attempt < 4 and use_local and f"{cat}:{val}" in used_logic: is_dup = True
                 
@@ -694,14 +688,21 @@ JSON: {{"q": "Kya...", "msg": "...", "y_id": [IDs]}}"""
                             }
                             st.rerun()
             
-            # FINAL FALLBACK: Ask a generic team question to keep it moving
+            # FINAL FALLBACK: Ask about a letter in the name to guarantee it never repeats
             if remaining:
                 p = remaining[0]
+                asked_letters = [h.get('val') for h in st.session_state.history if h.get('cat') == 'Letter']
+                import string
+                # Find a letter in this player's name that hasn't been asked yet
+                letter = next((l for l in p['Name'].upper() if l in string.ascii_uppercase and l not in asked_letters), None)
+                if not letter:
+                    letter = next((l for l in string.ascii_uppercase if l not in asked_letters), 'A')
+                
                 st.session_state.current_q = {
-                    "q": f"Kya wo player {p.get('Team', 'ek special team')} ke liye khelta hai?",
-                    "msg": "Hmm, lagta hai aap mujhe fasa rahe ho... 👀",
-                    "y_id": [i for i, pl in enumerate(remaining) if pl.get('Team') == p.get('Team')],
-                    "cat": "Team", "val": p.get("Team")
+                    "q": f"Kya us player ke naam mein '{letter}' akshar (letter) aata hai?",
+                    "msg": "Stats samajh nahi aa rahe... thoda alag dimaag lagata hoon! 🤓",
+                    "y_id": [i for i, pl in enumerate(remaining) if letter in pl['Name'].upper()],
+                    "cat": "Letter", "val": letter
                 }
                 st.rerun()
             
