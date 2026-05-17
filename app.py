@@ -442,7 +442,7 @@ def load_data():
                     )
     except Exception: pass
     
-    return players[:170]
+    return players
 
 # --- INITIALIZE SESSION STATE (always reload fresh data) ---
 # Centralized session state reset
@@ -461,10 +461,6 @@ def reset_game_state():
 if "all_players" not in st.session_state:
     st.session_state.all_players = load_data()
     st.session_state.remaining_players = list(st.session_state.all_players)
-# Force reload if pool size exceeds 170 (enforcing user constraint)
-elif len(st.session_state.all_players) > 170:
-    st.session_state.all_players = st.session_state.all_players[:170]
-    st.session_state.remaining_players = [p for p in st.session_state.remaining_players if p in st.session_state.all_players]
 
 if st.session_state.game_state == "start":
     reset_game_state()
@@ -553,6 +549,19 @@ def call_ai(prompt, model_name=None):
         except Exception: pass
 
     return None
+
+def get_player_image_url(player_name):
+    try:
+        url = f"https://en.wikipedia.org/w/api.php?action=query&titles={urllib.parse.quote(player_name)}&prop=pageimages&format=json&pithumbsize=500"
+        response = requests.get(url, timeout=5)
+        data = response.json()
+        pages = data.get("query", {}).get("pages", {})
+        for page_id, page_info in pages.items():
+            if "thumbnail" in page_info:
+                return page_info["thumbnail"]["source"]
+    except Exception:
+        pass
+    return f"https://ui-avatars.com/api/?name={urllib.parse.quote(player_name)}&background=random&color=fff&size=500"
 
 def get_next_question():
     remaining = st.session_state.remaining_players
@@ -894,38 +903,28 @@ elif st.session_state.game_state == "playing":
                 st.session_state.game_state = "start"
                 st.rerun()
 
-def get_player_image_url(player_name):
-    try:
-        url = f"https://en.wikipedia.org/w/api.php?action=query&titles={urllib.parse.quote(player_name)}&prop=pageimages&format=json&pithumbsize=500"
-        response = requests.get(url, timeout=5)
-        data = response.json()
-        pages = data.get("query", {}).get("pages", {})
-        for page_id, page_info in pages.items():
-            if "thumbnail" in page_info:
-                return page_info["thumbnail"]["source"]
-    except Exception:
-        pass
-    return f"https://ui-avatars.com/api/?name={urllib.parse.quote(player_name)}&background=random&color=fff&size=500"
-
 elif st.session_state.game_state == "result":
     res = st.session_state.final_guess
+    guess_name = res.get("guess", "Unknown Player")
+    confidence = res.get("confidence", "90%")
+    celebration = res.get("celebration", "Bhai main toh genius hoon! 😎")
+    
     with st.container():
         st.markdown("<div class='glass-card'></div>", unsafe_allow_html=True)
         
         # THE BIG REVEAL
         st.markdown("<div class='sahi-pakde'>🎯 SAHI PAKDE HAI! 🎯</div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='result-name'>{res['guess']}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='result-name'>{guess_name}</div>", unsafe_allow_html=True)
         
-        image_url = get_player_image_url(res['guess'])
+        image_url = get_player_image_url(guess_name)
         st.markdown(f"<div style='display: flex; justify-content: center; margin-bottom: 20px;'><img src='{image_url}' style='border-radius: 50%; width: 250px; height: 250px; object-fit: cover; border: 4px solid #fc3c44; box-shadow: 0 0 20px rgba(252,60,68,0.5);'></div>", unsafe_allow_html=True)
         
         # Celebration line from AI
-        celebration = res.get('celebration', 'Bhai main toh genius hoon! 😎')
         st.markdown(f"<div class='ai-bubble'>🎉 {celebration}</div>", unsafe_allow_html=True)
         
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown(f"<span class='result-badge'>🎯 {res['confidence']}</span>", unsafe_allow_html=True)
+            st.markdown(f"<span class='result-badge'>🎯 {confidence}</span>", unsafe_allow_html=True)
         with col2:
             st.markdown(f"<span class='result-badge'>🧠 {st.session_state.count} probes</span>", unsafe_allow_html=True)
         
@@ -951,7 +950,7 @@ elif st.session_state.game_state == "result":
                 st.rerun()
         with col_b:
             if st.button("😤 Galat Hai!", use_container_width=True):
-                st.session_state.remaining_players = [p for p in st.session_state.remaining_players if p["Name"] != res["guess"]]
+                st.session_state.remaining_players = [p for p in st.session_state.remaining_players if p["Name"] != guess_name]
                 if len(st.session_state.remaining_players) == 0:
                     st.error("Database khatam ho gaya bhai! 😅")
                     st.session_state.game_state = "start"
