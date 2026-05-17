@@ -611,14 +611,15 @@ TASK: Pick a CATEGORY and VALUE from STATS to split pool 50/50.
 RULE: MUST be a strict YES/NO question starting with "Kya" (e.g. "Kya wo player fast bowler hai?"). NEVER use player names. NO open-ended questions.
 JSON: {{"cat": "...", "val": "...", "q": "Kya...", "msg": "Witty roast"}}"""
             else:
-                # Show samples to help AI differentiate
-                samples = "|".join([f"{p['Name']}({p.get('Team')},{p.get('Role')})" for p in remaining[:5]])
+                # Show samples with IDs to help AI differentiate and return y_id
+                samples = "|".join([f"ID:{i}={p['Name']}({p.get('Team')})" for i, p in enumerate(remaining[:10])])
+                history_short = [f"Q:{h['q']}|A:{h['a']}" for h in st.session_state.history]
                 prompt = f"""
 POOL: {samples} ({len(remaining)} total)
 HISTORY: {history_short}
 TASK: Unique YES/NO question.
 RULE: MUST be a strict YES/NO question starting with "Kya" (e.g. "Kya wo player MI mein khelta hai?"). NEVER use player names. NO open-ended questions.
-JSON: {{"q": "Kya...", "msg": "...", "y_id": [IDs]}}"""
+JSON: {{"q": "Kya...", "msg": "...", "y_id": [IDs that match the question]}}"""
 
             res = call_ai(prompt)
             if res:
@@ -932,8 +933,15 @@ elif st.session_state.game_state == "result":
         st.markdown("<div class='sahi-pakde'>🎯 SAHI PAKDE HAI! 🎯</div>", unsafe_allow_html=True)
         st.markdown(f"<div class='result-name'>{guess_name}</div>", unsafe_allow_html=True)
         
-        image_url = get_player_image_url(guess_name)
-        st.markdown(f"<div style='display: flex; justify-content: center; margin-bottom: 10px;'><img src='{image_url}' style='border-radius: 50%; width: 250px; height: 250px; object-fit: cover; border: 4px solid #fc3c44; box-shadow: 0 0 20px rgba(252,60,68,0.5);'></div>", unsafe_allow_html=True)
+        # --- NEW CODE: FETCH AND DISPLAY IMAGE ---
+        with st.spinner("Fetching player profile picture..."):
+            image_url = get_player_image_url(guess_name)
+        
+        # Centered visual frame layout for the player picture
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.markdown(f"<div style='display: flex; flex-direction: column; align-items: center; justify-content: center; margin-bottom: 10px;'><img src='{image_url}' style='border-radius: 50%; width: 200px; height: 200px; object-fit: cover; border: 4px solid #fc3c44; box-shadow: 0 0 20px rgba(252,60,68,0.5);'><p style='color: #a0a0a0; font-size: 0.9rem; margin-top: 10px;'>Profile Card: {guess_name}</p></div>", unsafe_allow_html=True)
+        # ----------------------------------------
         
         # Render player sub-details/badges from dataset
         matched_profile = next((p for p in st.session_state.all_players if p['Name'].lower() == guess_name.lower()), None)
