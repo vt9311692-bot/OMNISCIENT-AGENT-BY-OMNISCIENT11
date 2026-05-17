@@ -552,7 +552,8 @@ def call_ai(prompt, model_name=None):
 
 def get_player_image_url(player_name):
     try:
-        url = f"https://en.wikipedia.org/w/api.php?action=query&titles={urllib.parse.quote(player_name)}&prop=pageimages&format=json&pithumbsize=250"
+        search_query = urllib.parse.quote(player_name.strip() + " cricketer")
+        url = f"https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch={search_query}&gsrlimit=1&prop=pageimages&format=json&pithumbsize=250"
         response = requests.get(url, timeout=5)
         data = response.json()
         pages = data.get("query", {}).get("pages", {})
