@@ -573,15 +573,7 @@ def get_player_image_url(player_name):
     except Exception:
         pass
         
-    # FALLBACK: DuckDuckGo Search API (100% Free, No API Key required)
-    try:
-        from duckduckgo_search import DDGS
-        with DDGS() as ddgs:
-            results = list(ddgs.images(f"{player_name} ipl cricket", max_results=1))
-            if results and len(results) > 0:
-                return results[0]['image']
-    except Exception:
-        pass
+
 
     return f"https://ui-avatars.com/api/?name={urllib.parse.quote(player_name)}&background=random&color=fff&size=250"
 
