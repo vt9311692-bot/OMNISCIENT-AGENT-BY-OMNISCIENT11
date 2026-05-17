@@ -600,17 +600,18 @@ def get_next_question():
         used_cats = [str(h.get('cat')) for h in st.session_state.history if 'cat' in h]
         
         for attempt in range(5): 
+            history_short = [f"Q:{h['q']}|A:{h['a']}" for h in st.session_state.history]
             if use_local:
                 prompt = f"""
 STATS: {stats}
 BANNED: {used_logic}
+HISTORY: {history_short}
 TASK: Pick a CATEGORY and VALUE from STATS to split pool 50/50. 
 RULE: MUST be a strict YES/NO question starting with "Kya" (e.g. "Kya wo player fast bowler hai?"). NEVER use player names. NO open-ended questions.
 JSON: {{"cat": "...", "val": "...", "q": "Kya...", "msg": "Witty roast"}}"""
             else:
                 # Show samples to help AI differentiate
                 samples = "|".join([f"{p['Name']}({p.get('Team')},{p.get('Role')})" for p in remaining[:5]])
-                history_short = [f"Q:{h['q']}|A:{h['a']}" for h in st.session_state.history]
                 prompt = f"""
 POOL: {samples} ({len(remaining)} total)
 HISTORY: {history_short}
@@ -624,8 +625,16 @@ JSON: {{"q": "Kya...", "msg": "...", "y_id": [IDs]}}"""
                 cat = res.get("cat")
                 val = res.get("val")
                 
-                # Check for duplicates (Relaxed on last attempt)
+                # Check for duplicates using keywords
+                past_qs = [h['q'].lower() for h in st.session_state.history]
                 is_dup = any(h['q'].lower().strip() == q_text.lower().strip() for h in st.session_state.history)
+                
+                # Keyword heuristic to prevent rephrased repeats
+                keywords = ["overseas", "captain", "keeper", "fast bowler", "spin", "left hand", "right hand", "all-rounder"]
+                for kw in keywords:
+                    if kw in q_text.lower() and any(kw in pq for pq in past_qs):
+                        is_dup = True
+                
                 if attempt < 4 and use_local and f"{cat}:{val}" in used_logic: is_dup = True
                 
                 if is_dup: continue
