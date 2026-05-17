@@ -640,7 +640,9 @@ STATS: {clean_stats}
 BANNED: {used_logic}
 HISTORY: {history_short}
 TASK: Pick a CATEGORY and VALUE from STATS to split pool 50/50. 
-RULE: MUST be a strict YES/NO question starting with "Kya" (e.g. "Kya wo player fast bowler hai?"). NEVER use player names. NO open-ended questions. ASK ONLY ABOUT THE GIVEN STATS.
+RULE 1: MUST start with "Kya" (e.g. "Kya wo player fast bowler hai?").
+RULE 2: CRITICAL - NEVER ask a question that is similar to any in the HISTORY or BANNED list. Generate a 100% FRESH question!
+RULE 3: ASK ONLY ABOUT THE GIVEN STATS.
 JSON: {{"cat": "...", "val": "...", "q": "Kya...", "msg": "Witty roast"}}"""
             else:
                 # Show rich samples with IDs to help AI differentiate and generate very specific questions
@@ -651,9 +653,10 @@ JSON: {{"cat": "...", "val": "...", "q": "Kya...", "msg": "Witty roast"}}"""
                 history_short = [f"Q:{h['q']}|A:{h['a']}" for h in st.session_state.history]
                 prompt = f"""
 POOL: {samples} ({len(remaining)} total)
-HISTORY: {history_short}
-TASK: Unique YES/NO question.
-RULE: MUST be a strict YES/NO question starting with "Kya" (e.g. "Kya wo player MI mein khelta hai?"). NEVER use player names. NO open-ended questions.
+HISTORY (DO NOT REPEAT): {history_short}
+TASK: Ask a 100% FRESH, Unique YES/NO question to split the POOL.
+RULE 1: MUST start with "Kya". 
+RULE 2: CRITICAL - NEVER ask about anything that was already asked in the HISTORY! Look at the HISTORY and find a completely new attribute (like Nickname, Bowling style, Tag, or a different Team) to ask about.
 JSON: {{"q": "Kya...", "msg": "...", "reasoning": "Explain step by step which IDs match", "y_id": [IDs that match the question]}}"""
 
             res = call_ai(prompt)
